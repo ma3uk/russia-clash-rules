@@ -1,4 +1,4 @@
-name: Convert Domain Lists to Clash YAML (IP + V2Ray Support)
+name: Convert Domain Lists to Clash YAML (IP + V2Ray + Regex Support)
 
 on:
   schedule:
@@ -18,7 +18,7 @@ jobs:
       - name: 📂 Create output directory
         run: mkdir -p output
 
-      - name: 🔍 Process domain lists with bulletproof IP detection
+      - name: 🔍 Process domain lists with bulletproof IP and regex detection
         id: process_files
         run: |
           # SOURCE ARRAY: URL -> Desired filename
@@ -62,7 +62,7 @@ jobs:
             
             echo "📥 Processing $url → $safe_name.yaml"
             
-            # Download and convert with robust IP handling
+            # Download and convert with robust IP and regex handling
             curl -sfL "$url" | 
             tr -d '\r' |                      # Remove Windows carriage returns
             sed -E 's/#.*$//g' |              # Remove ALL comments from lines
@@ -163,7 +163,32 @@ jobs:
                   next;  # Skip unsupported geosite rules
                 }
                 
-                # 4. Final domain processing
+                # 4. AUTOMATIC REGEX DETECTION (NEW FEATURE)
+                # Detect regex patterns with special characters
+                if ($0 ~ /\\\.|\\[a-zA-Z]|^[\^]|\$$|\[[^\]]+\]|\{[0-9,]+\}|\|/ || 
+                    ($0 ~ /[\+\*\?]/ && ($0 ~ /\.[a-z]{2,}$/ || $0 ~ /\.[a-z]{2,}\$$/))) {
+                  
+                  # Special handling for common regex patterns
+                  if ($0 ~ /\\\.com$/) {
+                    gsub(/\\\.com$/, "\\\\\\.com", $0);
+                  }
+                  if ($0 ~ /\\\.net$/) {
+                    gsub(/\\\.net$/, "\\\\\\.net", $0);
+                  }
+                  
+                  # Escape backslashes for YAML compatibility
+                  gsub(/\\/, "\\\\", $0);
+                  
+                  # Add ^ and $ anchors if missing for better matching
+                  if ($0 !~ /^\^/ && $0 !~ /\$$/) {
+                    $0 = "^" $0 "$";
+                  }
+                  
+                  print "  - DOMAIN-REGEX," $0;
+                  next;
+                }
+                
+                # 5. Final domain processing
                 if ($0 ~ /^\*/) {
                   gsub(/^\*\./, "", $0);
                   print "  - DOMAIN-SUFFIX," $0;
@@ -208,6 +233,7 @@ jobs:
           name: "Clash Rules"
           body: |
             
+            **Available files with IP/CIDR and Regex support:**
             ${{ env.files_list }}
             
           files: |
