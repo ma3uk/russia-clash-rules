@@ -208,7 +208,6 @@ jobs:
           name: "Clash Rules"
           body: |
             
-            **Available files with IP/CIDR support:**
             ${{ env.files_list }}
             
           files: |
