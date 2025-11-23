@@ -2,14 +2,14 @@ name: Convert Domain Lists to Clash YAML (V2Ray Support)
 
 on:
   schedule:
-    - cron: "0 */6 * * *"  # Каждые 6 часов
-  workflow_dispatch:       # Ручной запуск через UI
+    - cron: "0 */6 * * *"  # Every 6 hours
+  workflow_dispatch:       # Manual trigger
 
 jobs:
   process-domains:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # Для создания релизов
+      contents: write  # For creating releases
 
     steps:
       - name: 🚀 Checkout repository
@@ -21,7 +21,7 @@ jobs:
       - name: 🔍 Process domain lists with V2Ray prefix conversion
         id: process_files
         run: |
-          # МАССИВ ИСТОЧНИКОВ: URL -> Желаемое имя файла
+          # SOURCE ARRAY: URL -> Desired filename
           declare -A sources=(
             ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/antifilter-download-community.txt"]="antifilter-community"
             ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/antifilter-download.txt"]="antifilter"
@@ -62,98 +62,134 @@ jobs:
             
             echo "📥 Processing $url → $safe_name.yaml"
             
-            # Скачиваем и преобразуем с поддержкой V2Ray префиксов
+            # Download and convert with V2Ray prefix and IP support
             curl -sfL "$url" | 
-            grep -v '^#\|^$\|://' |          # Удаляем комментарии и пустые строки
-            sed -E '/^[[:space:]]*$/d' |     # Удаляем оставшиеся пустые строки
+            grep -v '^#\|^$\|://' |          # Remove comments and empty lines
+            sed -E '/^[[:space:]]*$/d' |     # Remove remaining empty lines
             awk -v name="$safe_name" '
               BEGIN { print "payload:" }
               {
-                # Удаляем возможные пробелы в начале/конце
-                gsub(/^[ \t]+|[ \t]+$/, "", $0);
+                gsub(/^[ \t]+|[ \t]+$/, "", $0);  # Trim whitespace
+                if ($0 == "") next;
                 
-                # Обработка V2Ray префиксов
+                # Handle V2Ray prefixes
                 if ($0 ~ /^domain:/) {
-                  domain = substr($0, 8);  # Убираем "domain:"
-                  # Определяем тип правила на основе наличия точек и звёздочек
-                  if (domain ~ /\*/) {
-                    # Если есть звёздочка - это DOMAIN-KEYWORD или DOMAIN-SUFFIX
-                    if (domain ~ /^\*/) {
-                      # *.example.com → DOMAIN-SUFFIX,example.com
-                      gsub(/^\*\./, "", domain);
-                      print "  - DOMAIN-SUFFIX," domain;
-                    } else if (domain ~ /\*$/) {
-                      # example* → DOMAIN-KEYWORD,example
-                      gsub(/\*$/, "", domain);
-                      print "  - DOMAIN-KEYWORD," domain;
-                    } else {
-                      # example*.com → DOMAIN,example*.com (редкий случай)
-                      print "  - DOMAIN," domain;
-                    }
-                  } else {
-                    # example.com → DOMAIN-SUFFIX,example.com
-                    print "  - DOMAIN-SUFFIX," domain;
-                  }
+                  domain = substr($0, 8);
+                  processDomain(domain);
                 }
                 else if ($0 ~ /^full:/) {
-                  # full:example.com → DOMAIN,example.com
                   domain = substr($0, 6);
                   print "  - DOMAIN," domain;
                 }
                 else if ($0 ~ /^regexp:/) {
-                  # regexp:^example\.com$ → DOMAIN-REGEX,^example\.com$
                   regex = substr($0, 9);
-                  # Экранируем обратные слеши для YAML (двойной слеш)
-                  gsub(/\\/, "\\\\", regex);
+                  gsub(/\\/, "\\\\", regex);  # Escape backslashes for YAML
                   print "  - DOMAIN-REGEX," regex;
                 }
                 else if ($0 ~ /^geosite:/) {
-                  # Пропускаем geosite правила (не поддерживаются в Clash как отдельные правила)
-                  next;
+                  next;  # Skip unsupported geosite rules
                 }
                 else {
-                  # Стандартные домены без префикса
-                  if ($0 ~ /\*/) {
-                    # Обработка wildcard доменов
-                    if ($0 ~ /^\*/) {
-                      gsub(/^\*\./, "", $0);
-                      print "  - DOMAIN-SUFFIX," $0;
-                    } else if ($0 ~ /\*$/) {
-                      gsub(/\*$/, "", $0);
-                      print "  - DOMAIN-KEYWORD," $0;
-                    } else {
-                      print "  - DOMAIN," $0;
-                    }
-                  } else {
-                    # Обычный домен
-                    print "  - DOMAIN-SUFFIX," $0;
+                  # Auto-detect IP addresses and domains
+                  if (isIPv4($0)) {
+                    if ($0 !~ /\//) $0 = $0 "/32";
+                    print "  - IP-CIDR," $0;
                   }
+                  else if (isIPv6($0)) {
+                    if ($0 !~ /\//) $0 = $0 "/128";
+                    print "  - IP-CIDR6," $0;
+                  }
+                  else {
+                    processDomain($0);
+                  }
+                }
+              }
+              
+              function isIPv4(str) {
+                if (str ~ /^([0-9]{1,3}[.]){3}[0-9]{1,3}(\/[0-9]{1,2})?$/) {
+                  split(str, parts, /\//);
+                  ip = parts[1];
+                  split(ip, octets, ".");
+                  if (length(octets) != 4) return 0;
+                  for (i=1; i<=4; i++) {
+                    if (octets[i] !~ /^[0-9]+$/ || octets[i] < 0 || octets[i] > 255) 
+                      return 0;
+                  }
+                  if (length(parts) == 2) {
+                    prefix = parts[2];
+                    if (prefix !~ /^[0-9]+$/ || prefix < 0 || prefix > 32)
+                      return 0;
+                  }
+                  return 1;
+                }
+                return 0;
+              }
+              
+              function isIPv6(str) {
+                if (str ~ /:/ && str !~ /\./ && str ~ /^[0-9a-fA-F:\/]+$/) {
+                  split(str, parts, /\//);
+                  ip = parts[1];
+                  
+                  # Basic IPv6 validation
+                  if (ip == "" || ip ~ /::$/ || ip ~ /^:::/ || ip ~ /:::/) 
+                    return 0;
+                  
+                  # Count colons (valid IPv6 has 2-7 colons in uncompressed form)
+                  colonCount = gsub(/:/, "&", ip);
+                  if (colonCount < 2 || colonCount > 7) 
+                    return 0;
+                  
+                  # Validate prefix length if present
+                  if (length(parts) == 2) {
+                    prefix = parts[2];
+                    if (prefix !~ /^[0-9]+$/ || prefix < 0 || prefix > 128)
+                      return 0;
+                  }
+                  return 1;
+                }
+                return 0;
+              }
+              
+              function processDomain(domain) {
+                if (domain ~ /\*/) {
+                  if (domain ~ /^\*/) {
+                    gsub(/^\*\./, "", domain);
+                    print "  - DOMAIN-SUFFIX," domain;
+                  } else if (domain ~ /\*$/) {
+                    gsub(/\*$/, "", domain);
+                    print "  - DOMAIN-KEYWORD," domain;
+                  } else {
+                    print "  - DOMAIN," domain;
+                  }
+                } else {
+                  print "  - DOMAIN-SUFFIX," domain;
                 }
               }
             ' > "output/${safe_name}.yaml"
             
-            # Валидация
+            # Validation
             if [ ! -s "output/${safe_name}.yaml" ]; then
               echo "❌ EMPTY FILE: $safe_name.yaml from $url"
               exit 1
             fi
             
-            domains_count=$(grep -c "DOMAIN-" "output/${safe_name}.yaml" || true)
-            echo "✅ Created $safe_name.yaml ($domains_count rules)"
+            # Count ALL rule types (domains + IPs)
+            rules_count=$(grep -c '^  - ' "output/${safe_name}.yaml" || true)
+            echo "✅ Created $safe_name.yaml ($rules_count rules)"
             
-            # Собираем список для описания релиза
+            # Prepare release description
             file_size=$(numfmt --to=iec-i --suffix=B --format="%.1f" $(stat -c%s "output/${safe_name}.yaml") 2>/dev/null || echo "unknown size")
-            file_list+="- $safe_name.yaml ($file_size, $domains_count rules)\n"
+            file_list+="- $safe_name.yaml ($file_size, $rules_count rules)\n"
           done
           
-          # Сохраняем список файлов для шага релиза
+          # Save file list for release step
           echo "files_list<<EOF" >> $GITHUB_ENV
           echo -e "$file_list" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
       - name: 🏷️ Generate release tag
         id: tag
-        run: echo "RELEASE_TAG=v$(date +'%Y%m%d%H')" >> $GITHUB_ENV
+        run: echo "RELEASE_TAG=v$(date +'%Y%m%d%H%M')" >> $GITHUB_ENV
 
       - name: 📤 Create GitHub Release with Individual Files
         uses: softprops/action-gh-release@v1
@@ -162,7 +198,7 @@ jobs:
           name: "Clash Rules"
           body: |
             
-            **Доступные файлы:**
+            **Available files:**
             ${{ env.files_list }}
             
           files: |
