@@ -49,6 +49,7 @@ jobs:
             ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/roscomandzor-iplist.txt"]="roscomandzor-iplist"
             ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/telegram.txt"]="telegram"
             ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/twitter.txt"]="twitter"
+            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/discord-ip.txt"]="discord-ip"
           )
           
           file_list=""
