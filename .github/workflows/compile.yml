@@ -1,4 +1,4 @@
-name: Convert Domain Lists to Clash YAML (IP + V2Ray + Regex Support)
+name: Convert Domain Lists to Clash YAML (IP + V2Ray + Wildcard Support)
 
 on:
   schedule:
@@ -18,7 +18,7 @@ jobs:
       - name: 📂 Create output directory
         run: mkdir -p output
 
-      - name: 🔍 Process domain lists with bulletproof IP and regex detection
+      - name: 🔍 Process domain lists with IP, regex and wildcard detection
         id: process_files
         run: |
           # SOURCE ARRAY: URL -> Desired filename
@@ -62,7 +62,7 @@ jobs:
             
             echo "📥 Processing $url → $safe_name.yaml"
             
-            # Download and convert with robust IP and regex handling
+            # Download and convert with robust IP and wildcard handling
             curl -sfL "$url" | 
             tr -d '\r' |                      # Remove Windows carriage returns
             sed -E 's/#.*$//g' |              # Remove ALL comments from lines
@@ -155,20 +155,34 @@ jobs:
                 else if ($0 ~ /^regexp:/) {
                   regex = substr($0, 9);
                   gsub(/^[ \t]+|[ \t]+$/, "", regex);
-                  gsub(/\\/, "\\\\", regex);  # Escape backslashes for YAML
-                  print "  - DOMAIN-REGEX," regex;
+                  
+                  # Convert V2Ray regex to Clash compatible format
+                  if (canConvertToWildcard(regex)) {
+                    wildcard = convertToWildcard(regex);
+                    print "  - DOMAIN-WILDCARD," wildcard;
+                  } else {
+                    gsub(/\\/, "\\\\", regex);  # Escape backslashes for YAML
+                    print "  - DOMAIN-REGEX," regex;
+                  }
                   next;
                 }
                 else if ($0 ~ /^geosite:/) {
                   next;  # Skip unsupported geosite rules
                 }
                 
-                # 4. AUTOMATIC REGEX DETECTION (NEW FEATURE)
-                # Detect regex patterns with special characters
+                # 4. AUTOMATIC WILDCARD DETECTION
+                # Try to convert regex patterns to DOMAIN-WILDCARD where possible
                 if ($0 ~ /\\\.|\\[a-zA-Z]|^[\^]|\$$|\[[^\]]+\]|\{[0-9,]+\}|\|/ || 
                     ($0 ~ /[\+\*\?]/ && ($0 ~ /\.[a-z]{2,}$/ || $0 ~ /\.[a-z]{2,}\$$/))) {
                   
-                  # Special handling for common regex patterns
+                  # Check if this regex can be converted to wildcard format
+                  if (canConvertToWildcard($0)) {
+                    wildcard = convertToWildcard($0);
+                    print "  - DOMAIN-WILDCARD," wildcard;
+                    next;
+                  }
+                  
+                  # Special handling for common regex patterns if cannot convert to wildcard
                   if ($0 ~ /\\\.com$/) {
                     gsub(/\\\.com$/, "\\\\\\.com", $0);
                   }
@@ -200,6 +214,69 @@ jobs:
                 else {
                   print "  - DOMAIN-SUFFIX," $0;
                 }
+              }
+              
+              # Function to check if regex can be converted to wildcard
+              function canConvertToWildcard(pattern) {
+                # Trim whitespace and anchors
+                gsub(/^[ \t]+|[ \t]+$/, "", pattern);
+                gsub(/^\^|\$$/, "", pattern);
+                
+                # Check for simple wildcard patterns at the beginning
+                if (pattern ~ /^\\\*\./ && pattern !~ /[\^\$\[\]\{\}\+\|\?]/) {
+                  return 1;
+                }
+                # Check for unescaped wildcard at beginning
+                else if (pattern ~ /^\*\./ && pattern !~ /[\^\$\[\]\{\}\+\|\?]/) {
+                  return 1;
+                }
+                # Check for patterns like .*\.example\.com that can be converted to *.example.com
+                else if (pattern ~ /^\.\*\\\./ && pattern !~ /[\^\$\[\]\{\}\+\|\?]/) {
+                  # Make sure there are no special regex characters after the domain part
+                  if (pattern !~ /\\\.[a-z]{2,}$/) {
+                    return 0;
+                  }
+                  return 1;
+                }
+                return 0;
+              }
+              
+              # Function to convert regex to wildcard format
+              function convertToWildcard(pattern,    result) {
+                # Trim whitespace and anchors
+                gsub(/^[ \t]+|[ \t]+$/, "", pattern);
+                gsub(/^\^|\$$/, "", pattern);
+                
+                # Convert different regex patterns to wildcard format
+                if (pattern ~ /^\\\*\./) {
+                  # Convert \*\.example\.com to *.example.com
+                  gsub(/^\\\*\./, "*.", pattern);
+                  gsub(/\\\./, ".", pattern);
+                  result = pattern;
+                }
+                else if (pattern ~ /^\*\./) {
+                  # Convert *.example.com to *.example.com (no change needed)
+                  gsub(/\\\./, ".", pattern);
+                  result = pattern;
+                }
+                else if (pattern ~ /^\.\*\\\./) {
+                  # Convert .*\.example\.com to *.example.com
+                  gsub(/^\.\*\\\./, "*.", pattern);
+                  gsub(/\\\./, ".", pattern);
+                  result = pattern;
+                }
+                else {
+                  # Fallback: use the pattern as is
+                  gsub(/\\\./, ".", pattern);
+                  result = "*." pattern;
+                }
+                
+                # Ensure we have a valid wildcard format
+                if (result !~ /^\*\./) {
+                  result = "*." result;
+                }
+                
+                return result;
               }
             ' > "output/${safe_name}.yaml"
             
@@ -233,7 +310,7 @@ jobs:
           name: "Clash Rules"
           body: |
             
-            **Available files with IP/CIDR and Regex support:**
+            **Available files with IP/CIDR, Wildcard and Regex support:**
             ${{ env.files_list }}
             
           files: |
