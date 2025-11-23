@@ -36,6 +36,18 @@ jobs:
             ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/win-update.txt"]="win-update"
             ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/youtube.txt"]="youtube"
             ["https://raw.githubusercontent.com/dartraiden/no-russia-hosts/refs/heads/master/hosts.txt"]="blocked-from-outside"
+            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/akamai.txt"]="akamai"
+            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/amazon.txt"]="amazon"
+            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/autodesk.txt"]="autodesk"
+            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/azure.txt"]="azure"
+            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/cloudflare.txt"]="cloudflare"
+            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/gemini.txt"]="gemini"
+            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/hetzner.txt"]="hetzner"
+            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/intel.txt"]="intel"
+            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/riot-games.txt"]="riot-games"
+            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/roscomandzor-iplist.txt"]="roscomandzor-iplist"
+            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/telegram.txt"]="telegram"
+            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/twitter.txt"]="twitter"
           )
           
           file_list=""
