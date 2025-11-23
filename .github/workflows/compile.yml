@@ -147,7 +147,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ env.RELEASE_TAG }}
-          name: "Clash Rules $(date +'%Y-%m-%d %H:%M')"
+          name: "Clash Rules"
           body: |
             🤖 Автоматически сгенерированные правила для Clash.
             
