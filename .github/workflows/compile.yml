@@ -18,7 +18,7 @@ jobs:
       - name: 📂 Create output directory
         run: mkdir -p output
 
-      - name: 🔍 Process domain lists with IP, regex and wildcard detection
+      - name: 🔍 Process domain lists with proper YAML formatting
         id: process_files
         run: |
           # SOURCE ARRAY: URL -> Desired filename
@@ -62,14 +62,17 @@ jobs:
             
             echo "📥 Processing $url → $safe_name.yaml"
             
-            # Download and convert with robust IP and wildcard handling
+            # Download and convert with proper YAML formatting
             curl -sfL "$url" | 
             tr -d '\r' |                      # Remove Windows carriage returns
             sed -E 's/#.*$//g' |              # Remove ALL comments from lines
             sed -E 's/^[ \t]*//; s/[ \t]*$//' | # Trim leading/trailing whitespace
             grep -vE '^$|://' |               # Remove empty lines and URLs
             awk -v name="$safe_name" '
-              BEGIN { print "payload:" }
+              BEGIN { 
+                # CORRECT YAML FORMATTING: 2 SPACES FOR INDENTATION
+                print "payload:"
+              }
               
               {
                 # Final whitespace cleanup
@@ -98,12 +101,14 @@ jobs:
                     if (length(parts) == 2) {
                       prefix = parts[2] + 0;  # Force numeric conversion
                       if (prefix >= 0 && prefix <= 32) {
+                        # CORRECT YAML: 2 spaces indentation
                         print "  - IP-CIDR," $0;
                         next;
                       }
                     } else {
-                      print "  - IP-CIDR," ip "/32";
-                      next;
+                        # CORRECT YAML: 2 spaces indentation
+                        print "  - IP-CIDR," ip "/32";
+                        next;
                     }
                   }
                 }
@@ -120,12 +125,14 @@ jobs:
                       if (length(parts) == 2) {
                         prefix = parts[2] + 0;  # Force numeric conversion
                         if (prefix >= 0 && prefix <= 128) {
+                          # CORRECT YAML: 2 spaces indentation
                           print "  - IP-CIDR6," $0;
                           next;
                         }
                       } else {
-                        print "  - IP-CIDR6," ip "/128";
-                        next;
+                          # CORRECT YAML: 2 spaces indentation
+                          print "  - IP-CIDR6," ip "/128";
+                          next;
                       }
                     }
                   }
@@ -137,11 +144,14 @@ jobs:
                   gsub(/^[ \t]+|[ \t]+$/, "", domain);
                   if (domain ~ /^\*/) {
                     gsub(/^\*\./, "", domain);
+                    # CORRECT YAML: 2 spaces indentation
                     print "  - DOMAIN-SUFFIX," domain;
                   } else if (domain ~ /\*$/) {
                     gsub(/\*$/, "", domain);
+                    # CORRECT YAML: 2 spaces indentation
                     print "  - DOMAIN-KEYWORD," domain;
                   } else {
+                    # CORRECT YAML: 2 spaces indentation
                     print "  - DOMAIN," domain;
                   }
                   next;
@@ -149,6 +159,7 @@ jobs:
                 else if ($0 ~ /^full:/) {
                   domain = substr($0, 6);
                   gsub(/^[ \t]+|[ \t]+$/, "", domain);
+                  # CORRECT YAML: 2 spaces indentation
                   print "  - DOMAIN," domain;
                   next;
                 }
@@ -159,9 +170,11 @@ jobs:
                   # Convert V2Ray regex to Clash compatible format
                   if (canConvertToWildcard(regex)) {
                     wildcard = convertToWildcard(regex);
+                    # CORRECT YAML: 2 spaces indentation
                     print "  - DOMAIN-WILDCARD," wildcard;
                   } else {
                     gsub(/\\/, "\\\\", regex);  # Escape backslashes for YAML
+                    # CORRECT YAML: 2 spaces indentation
                     print "  - DOMAIN-REGEX," regex;
                   }
                   next;
@@ -171,18 +184,17 @@ jobs:
                 }
                 
                 # 4. AUTOMATIC WILDCARD DETECTION
-                # Try to convert regex patterns to DOMAIN-WILDCARD where possible
                 if ($0 ~ /\\\.|\\[a-zA-Z]|^[\^]|\$$|\[[^\]]+\]|\{[0-9,]+\}|\|/ || 
                     ($0 ~ /[\+\*\?]/ && ($0 ~ /\.[a-z]{2,}$/ || $0 ~ /\.[a-z]{2,}\$$/))) {
                   
-                  # Check if this regex can be converted to wildcard format
                   if (canConvertToWildcard($0)) {
                     wildcard = convertToWildcard($0);
+                    # CORRECT YAML: 2 spaces indentation
                     print "  - DOMAIN-WILDCARD," wildcard;
                     next;
                   }
                   
-                  # Special handling for common regex patterns if cannot convert to wildcard
+                  # Special handling for common regex patterns
                   if ($0 ~ /\\\.com$/) {
                     gsub(/\\\.com$/, "\\\\\\.com", $0);
                   }
@@ -193,11 +205,12 @@ jobs:
                   # Escape backslashes for YAML compatibility
                   gsub(/\\/, "\\\\", $0);
                   
-                  # Add ^ and $ anchors if missing for better matching
+                  # Add ^ and $ anchors if missing
                   if ($0 !~ /^\^/ && $0 !~ /\$$/) {
                     $0 = "^" $0 "$";
                   }
                   
+                  # CORRECT YAML: 2 spaces indentation
                   print "  - DOMAIN-REGEX," $0;
                   next;
                 }
@@ -205,34 +218,32 @@ jobs:
                 # 5. Final domain processing
                 if ($0 ~ /^\*/) {
                   gsub(/^\*\./, "", $0);
+                  # CORRECT YAML: 2 spaces indentation
                   print "  - DOMAIN-SUFFIX," $0;
                 }
                 else if ($0 ~ /\*$/) {
                   gsub(/\*$/, "", $0);
+                  # CORRECT YAML: 2 spaces indentation
                   print "  - DOMAIN-KEYWORD," $0;
                 }
                 else {
+                  # CORRECT YAML: 2 spaces indentation
                   print "  - DOMAIN-SUFFIX," $0;
                 }
               }
               
               # Function to check if regex can be converted to wildcard
               function canConvertToWildcard(pattern) {
-                # Trim whitespace and anchors
                 gsub(/^[ \t]+|[ \t]+$/, "", pattern);
                 gsub(/^\^|\$$/, "", pattern);
                 
-                # Check for simple wildcard patterns at the beginning
                 if (pattern ~ /^\\\*\./ && pattern !~ /[\^\$\[\]\{\}\+\|\?]/) {
                   return 1;
                 }
-                # Check for unescaped wildcard at beginning
                 else if (pattern ~ /^\*\./ && pattern !~ /[\^\$\[\]\{\}\+\|\?]/) {
                   return 1;
                 }
-                # Check for patterns like .*\.example\.com that can be converted to *.example.com
                 else if (pattern ~ /^\.\*\\\./ && pattern !~ /[\^\$\[\]\{\}\+\|\?]/) {
-                  # Make sure there are no special regex characters after the domain part
                   if (pattern !~ /\\\.[a-z]{2,}$/) {
                     return 0;
                   }
@@ -243,35 +254,28 @@ jobs:
               
               # Function to convert regex to wildcard format
               function convertToWildcard(pattern,    result) {
-                # Trim whitespace and anchors
                 gsub(/^[ \t]+|[ \t]+$/, "", pattern);
                 gsub(/^\^|\$$/, "", pattern);
                 
-                # Convert different regex patterns to wildcard format
                 if (pattern ~ /^\\\*\./) {
-                  # Convert \*\.example\.com to *.example.com
                   gsub(/^\\\*\./, "*.", pattern);
                   gsub(/\\\./, ".", pattern);
                   result = pattern;
                 }
                 else if (pattern ~ /^\*\./) {
-                  # Convert *.example.com to *.example.com (no change needed)
                   gsub(/\\\./, ".", pattern);
                   result = pattern;
                 }
                 else if (pattern ~ /^\.\*\\\./) {
-                  # Convert .*\.example\.com to *.example.com
                   gsub(/^\.\*\\\./, "*.", pattern);
                   gsub(/\\\./, ".", pattern);
                   result = pattern;
                 }
                 else {
-                  # Fallback: use the pattern as is
                   gsub(/\\\./, ".", pattern);
                   result = "*." pattern;
                 }
                 
-                # Ensure we have a valid wildcard format
                 if (result !~ /^\*\./) {
                   result = "*." result;
                 }
@@ -310,7 +314,7 @@ jobs:
           name: "Clash Rules"
           body: |
             
-            **Available files with IP/CIDR, Wildcard and Regex support:**
+            **Available files with proper YAML formatting:**
             ${{ env.files_list }}
             
           files: |
