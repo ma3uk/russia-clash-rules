@@ -23,8 +23,9 @@ jobs:
         run: |
           # SOURCE ARRAY: URL -> Desired filename
           declare -A sources=(
-            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/antifilter-download-community.txt"]="antifilter-community"
-            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/antifilter-download.txt"]="antifilter"
+            ["https://community.antifilter.download/list/domains.lst"]="antifilter-community"
+            ["https://community.antifilter.download/list/community.lst"]="antifilter-community-ip"
+            ["https://antifilter.download/list/allyouneed.lst"]="antifilter"
             ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/category-ads-all.txt"]="ads-all"
             ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/discord.txt"]="discord"
             ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/google.txt"]="google"
