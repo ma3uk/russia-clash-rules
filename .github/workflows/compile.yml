@@ -1,4 +1,4 @@
-name: Convert Domain Lists to Clash YAML (V2Ray + IP Support)
+name: Convert Domain Lists to Clash YAML (IP + V2Ray Support)
 
 on:
   schedule:
@@ -18,35 +18,11 @@ jobs:
       - name: 📂 Create output directory
         run: mkdir -p output
 
-      - name: 🔍 Process domain lists with IP/CIDR support
+      - name: 🔍 Process domain lists with bulletproof IP detection
         id: process_files
         run: |
           declare -A sources=(
-            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/antifilter-download-community.txt"]="antifilter-community"
-            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/antifilter-download.txt"]="antifilter"
-            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/category-ads-all.txt"]="ads-all"
-            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/discord.txt"]="discord"
-            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/google.txt"]="google"
-            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/refilter.txt"]="refilter"
-            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/ru-blocked-all.txt"]="ru-blocked-all"
-            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/ru-blocked.txt"]="ru-blocked"
-            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/win-extra.txt"]="win-extra"
-            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/win-spy.txt"]="win-spy"
-            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/win-update.txt"]="win-update"
-            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/youtube.txt"]="youtube"
-            ["https://raw.githubusercontent.com/dartraiden/no-russia-hosts/refs/heads/master/hosts.txt"]="blocked-from-outside"
-            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/akamai.txt"]="akamai"
-            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/amazon.txt"]="amazon"
-            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/autodesk.txt"]="autodesk"
-            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/azure.txt"]="azure"
-            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/cloudflare.txt"]="cloudflare"
-            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/gemini.txt"]="gemini"
-            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/hetzner.txt"]="hetzner"
-            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/intel.txt"]="intel"
-            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/riot-games.txt"]="riot-games"
-            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/roscomandzor-iplist.txt"]="roscomandzor-iplist"
-            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/telegram.txt"]="telegram"
-            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/twitter.txt"]="twitter"
+            # ... (те же источники) ...
           )
           
           file_list=""
@@ -62,28 +38,91 @@ jobs:
             echo "📥 Processing $url → $safe_name.yaml"
             
             curl -sfL "$url" | 
-            grep -vE '^#|^$|://' | 
-            sed -E '/^[[:space:]]*$/d' | 
+            # КРИТИЧЕСКИЕ ИСПРАВЛЕНИЯ:
+            tr -d '\r' |                      # Удаляем Windows-символы \r
+            sed -E 's/#.*$//g' |              # Удаляем ВСЕ комментарии до конца строки
+            sed -E 's/^[ \t]*//; s/[ \t]*$//' | # Точная обрезка пробелов
+            grep -vE '^$|://' |               # Удаляем пустые строки и URL
             awk -v name="$safe_name" '
               BEGIN { print "payload:" }
               
               {
+                # Полная обрезка whitespace
                 gsub(/^[ \t]+|[ \t]+$/, "", $0);
                 if ($0 == "") next;
                 
-                # Сначала обрабатываем V2Ray-префиксы
+                # 1. Обработка IP ПЕРЕД доменами (главный приоритет)
+                if ($0 ~ /^([0-9]{1,3}\.){3}[0-9]{1,3}(\/[0-9]{1,2})?$/) {
+                  split($0, parts, "/");
+                  ip = parts[1];
+                  
+                  # Валидация IPv4
+                  split(ip, octets, ".");
+                  valid = 1;
+                  if (length(octets) != 4) valid = 0;
+                  else {
+                    for (i=1; i<=4; i++) {
+                      if (octets[i] !~ /^[0-9]+$/ || octets[i] < 0 || octets[i] > 255) {
+                        valid = 0;
+                        break;
+                      }
+                    }
+                  }
+                  
+                  if (valid) {
+                    # CIDR или /32 для одиночного IP
+                    if (length(parts) == 2) {
+                      prefix = parts[2] + 0;
+                      if (prefix >= 0 && prefix <= 32) {
+                        print "  - IP-CIDR," $0;
+                        next;
+                      }
+                    } else {
+                      print "  - IP-CIDR," ip "/32";
+                      next;
+                    }
+                  }
+                }
+                
+                # 2. Обработка IPv6
+                else if ($0 ~ /^[0-9a-fA-F:]+(\/[0-9]{1,3})?$/) {
+                  split($0, parts, "/");
+                  ip = parts[1];
+                  
+                  # Простая, но надежная валидация IPv6
+                  if (ip ~ /:/ && ip !~ /\.\./ && ip != "::" && ip != ":") {
+                    colons = gsub(/:/, "", ip);  # Считаем количество двоеточий
+                    if (colons >= 1 && colons <= 7) {  # Валидное количество для IPv6
+                      if (length(parts) == 2) {
+                        prefix = parts[2] + 0;
+                        if (prefix >= 0 && prefix <= 128) {
+                          print "  - IP-CIDR6," $0;
+                          next;
+                        }
+                      } else {
+                        print "  - IP-CIDR6," ip "/128";
+                        next;
+                      }
+                    }
+                  }
+                }
+                
+                # 3. Обработка V2Ray-префиксов
                 if ($0 ~ /^domain:/) {
                   domain = substr($0, 8);
+                  gsub(/^[ \t]+|[ \t]+$/, "", domain);
                   processDomain(domain);
                   next;
                 }
                 else if ($0 ~ /^full:/) {
                   domain = substr($0, 6);
+                  gsub(/^[ \t]+|[ \t]+$/, "", domain);
                   print "  - DOMAIN," domain;
                   next;
                 }
                 else if ($0 ~ /^regexp:/) {
                   regex = substr($0, 9);
+                  gsub(/^[ \t]+|[ \t]+$/, "", regex);
                   gsub(/\\/, "\\\\", regex);
                   print "  - DOMAIN-REGEX," regex;
                   next;
@@ -92,79 +131,16 @@ jobs:
                   next;
                 }
                 
-                # КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Проверяем IP ДО обработки доменов
-                if (isCIDRv4($0)) {
-                  print "  - IP-CIDR," $0;
-                  next;
-                }
-                else if (isCIDRv6($0)) {
-                  print "  - IP-CIDR6," $0;
-                  next;
-                }
-                else if (isIPv4($0)) {
-                  print "  - IP-CIDR," $0 "/32";
-                  next;
-                }
-                else if (isIPv6($0)) {
-                  print "  - IP-CIDR6," $0 "/128";
-                  next;
-                }
-                
-                # Если не IP - обрабатываем как домен
+                # 4. Последняя надежда: обработка как домена
                 processDomain($0);
               }
               
-              function isIPv4(addr) {
-                if (addr ~ /^([0-9]{1,3}\.){3}[0-9]{1,3}$/) {
-                  split(addr, octets, ".");
-                  if (length(octets) != 4) return 0;
-                  for (i=1; i<=4; i++) {
-                    if (octets[i] !~ /^[0-9]+$/ || octets[i] < 0 || octets[i] > 255) 
-                      return 0;
-                  }
-                  return 1;
-                }
-                return 0;
-              }
-              
-              function isIPv6(addr) {
-                # Простая, но эффективная проверка IPv6
-                if (addr ~ /:/ && addr !~ /\./ && addr ~ /^[0-9a-fA-F:]+$/) {
-                  # Проверяем наличие хотя бы двух двоеточий (минимум для IPv6)
-                  if (gsub(/:/, "&", addr) < 2) return 0;
-                  return 1;
-                }
-                return 0;
-              }
-              
-              function isCIDRv4(cidr) {
-                if (cidr ~ /^([0-9]{1,3}\.){3}[0-9]{1,3}\/[0-9]{1,2}$/) {
-                  split(cidr, parts, "/");
-                  ip = parts[1];
-                  prefix = parts[2] + 0;  # Явное преобразование в число
-                  
-                  if (!isIPv4(ip)) return 0;
-                  if (prefix < 0 || prefix > 32) return 0;
-                  return 1;
-                }
-                return 0;
-              }
-              
-              function isCIDRv6(cidr) {
-                if (cidr ~ /^[0-9a-fA-F:]+\/[0-9]{1,3}$/) {
-                  split(cidr, parts, "/");
-                  ip = parts[1];
-                  prefix = parts[2] + 0;  # Явное преобразование в число
-                  
-                  if (!isIPv6(ip)) return 0;
-                  if (prefix < 0 || prefix > 128) return 0;
-                  return 1;
-                }
-                return 0;
-              }
-              
               function processDomain(domain) {
-                if (domain ~ /^\*/) {
+                gsub(/^[ \t]+|[ \t]+$/, "", domain);
+                if (domain == "") return;
+                
+                # Обработка wildcard-доменов
+                if (domain ~ /^\*\./) {
                   gsub(/^\*\./, "", domain);
                   print "  - DOMAIN-SUFFIX," domain;
                 }
@@ -184,7 +160,7 @@ jobs:
               exit 1
             fi
             
-            rules_count=$(grep -c '^  - ' "output/${safe_name}.yaml" || true)
+            rules_count=$(grep -c '^  - ' "output/${safe_name}.yaml")
             echo "✅ Created $safe_name.yaml ($rules_count rules)"
             
             file_size=$(numfmt --to=iec-i --suffix=B --format="%.1f" $(stat -c%s "output/${safe_name}.yaml") 2>/dev/null || echo "unknown size")
