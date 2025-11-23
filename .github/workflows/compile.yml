@@ -1,4 +1,4 @@
-name: Universal Clash Rules Converter
+name: Universal Clash Rules Converter (with SRC-IP-ASN)
 
 on:
   schedule:
@@ -37,6 +37,7 @@ jobs:
             ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/win-update.txt"]="win-update"
             ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/youtube.txt"]="youtube"
             ["https://raw.githubusercontent.com/dartraiden/no-russia-hosts/refs/heads/master/hosts.txt"]="blocked-from-outside"
+            ["https://raw.githubusercontent.com/ma3uk/sing-box-rules/refs/heads/main/yaml/akamai.yaml"]="akamai"
           )
           
           file_list=""
@@ -54,215 +55,22 @@ jobs:
             # Определяем тип обработки
             case "$type" in
               txt|v2ray)
-                # Обработка TXT/V2Ray файлов с поддержкой ASN
                 curl -sfL "$url" | 
                 grep -v '^#\|^$\|://' | 
                 sed -E '/^[[:space:]]*$/d' |
-                awk -v safe_name="$safe_name" -f /dev/stdin <<'EOF_AWK'
-                  BEGIN { 
-                    print "payload:" 
-                    domain_count = 0
-                    ip_count = 0
-                    regex_count = 0
-                    asn_count = 0
-                  }
-                  function is_valid_asn(asn) {
-                    if (asn ~ /^[0-9]+$/) {
-                      num = asn + 0;
-                      return (num >= 1 && num <= 4294967295);
-                    }
-                    return 0;
-                  }
-                  function is_ipv4(addr) {
-                    if (addr ~ /^([0-9]{1,3}\\.){3}[0-9]{1,3}(\/[0-9]{1,2})?$/) {
-                      split(addr, parts, "/"); if (parts[2] == "") parts[2] = 32;
-                      if (parts[2] < 0 || parts[2] > 32) return 0;
-                      split(parts[1], octets, "."); if (length(octets) != 4) return 0;
-                      for (i=1; i<=4; i++) if (octets[i] < 0 || octets[i] > 255) return 0;
-                      return 1;
-                    }
-                    return 0;
-                  }
-                  function is_ipv6(addr) {
-                    if (addr ~ /^([0-9a-fA-F:]+)(\/[0-9]{1,3})?$/) {
-                      split(addr, parts, "/"); if (parts[2] == "") parts[2] = 128;
-                      if (parts[2] < 0 || parts[2] > 128) return 0;
-                      return 1;
-                    }
-                    return 0;
-                  }
-                  {
-                    gsub(/^[ \t]+|[ \t]+$/, "", $0);
-                    if ($0 ~ /^geosite:/) next;
-                    
-                    # Обработка ASN правил
-                    if ($0 ~ /^(src-ip-asn:|src-asn:|asn:)/) {
-                      asn = substr($0, index($0, ":") + 1);
-                      gsub(/^[ \t]+|[ \t]+$/, "", asn);
-                      if (is_valid_asn(asn)) {
-                        print "  - SRC-IP-ASN," asn;
-                        asn_count++;
-                      }
-                      next;
-                    }
-                    
-                    # Существующая логика для доменов и IP
-                    if ($0 ~ /^domain:/) {
-                      domain = substr($0, 8); gsub(/^[ \t]+|[ \t]+$/, "", domain);
-                      if (domain ~ /\*/) {
-                        if (domain ~ /^\*/) { gsub(/^\*\./, "", domain); print "  - DOMAIN-SUFFIX," domain; domain_count++ }
-                        else if (domain ~ /\*$/) { gsub(/\*$/, "", domain); print "  - DOMAIN-KEYWORD," domain; domain_count++ }
-                        else { print "  - DOMAIN," domain; domain_count++ }
-                      } else { print "  - DOMAIN-SUFFIX," domain; domain_count++ }
-                    }
-                    else if ($0 ~ /^full:/) {
-                      domain = substr($0, 6); gsub(/^[ \t]+|[ \t]+$/, "", domain);
-                      print "  - DOMAIN," domain; domain_count++;
-                    }
-                    else if ($0 ~ /^regexp:/) {
-                      regex = substr($0, 9); gsub(/^[ \t]+|[ \t]+$/, "", regex);
-                      gsub(/\\/, "\\\\", regex);
-                      print "  - DOMAIN-REGEX," regex; regex_count++;
-                    }
-                    else if ($0 ~ /^ipcidr:/) {
-                      ip_range = substr($0, 9); gsub(/^[ \t]+|[ \t]+$/, "", ip_range);
-                      if (is_ipv4(ip_range)) {
-                        if (ip_range !~ /\//) ip_range = ip_range "/32";
-                        print "  - IP-CIDR," ip_range ",no-resolve"; ip_count++;
-                      }
-                      else if (is_ipv6(ip_range)) {
-                        if (ip_range !~ /\//) ip_range = ip_range "/128";
-                        print "  - IP-CIDR6," ip_range ",no-resolve"; ip_count++;
-                      }
-                    }
-                    else {
-                      if (is_ipv4($0)) {
-                        ip = $0; if (ip !~ /\//) ip = ip "/32";
-                        print "  - IP-CIDR," ip ",no-resolve"; ip_count++;
-                      }
-                      else if (is_ipv6($0)) {
-                        ip = $0; if (ip !~ /\//) ip = ip "/128";
-                        print "  - IP-CIDR6," ip ",no-resolve"; ip_count++;
-                      }
-                      else if ($0 ~ /\*/) {
-                        if ($0 ~ /^\*/) { gsub(/^\*\./, "", $0); print "  - DOMAIN-SUFFIX," $0; domain_count++ }
-                        else if ($0 ~ /\*$/) { gsub(/\*$/, "", $0); print "  - DOMAIN-KEYWORD," $0; domain_count++ }
-                        else { print "  - DOMAIN," $0; domain_count++ }
-                      }
-                      else {
-                        # Проверка на ASN без префикса (только числа)
-                        if (is_valid_asn($0)) {
-                          print "  - SRC-IP-ASN," $0; asn_count++;
-                        } else {
-                          print "  - DOMAIN-SUFFIX," $0; domain_count++;
-                        }
-                      }
-                    }
-                  }
-                  END {
-                    print "# STATS: domains=" domain_count ", ips=" ip_count ", regex=" regex_count ", asn=" asn_count > "/dev/stderr";
-                  }EOF_AWK;;
+                awk -v safe_name="$safe_name" -f .github/scripts/process_txt.awk > "output/${safe_name}.yaml"
+                ;;
               
               yaml)
-                # Обработка существующих YAML файлов с поддержкой ASN
                 curl -sfL "$url" | 
-                awk -v safe_name="$safe_name" -f /dev/stdin <<'EOF_AWK'
-                  BEGIN { 
-                    print "payload:" 
-                    domain_count = 0
-                    ip_count = 0
-                    asn_count = 0
-                  }
-                  function clean_value(val) {
-                    gsub(/^[ \t"]+|[ \t"]+$/, "", val);
-                    gsub(/^\'|\'$/, "", val);
-                    gsub(/^"|"$/, "", val);
-                    return val;
-                  }
-                  function is_valid_asn(asn) {
-                    if (asn ~ /^[0-9]+$/) {
-                      num = asn + 0;
-                      return (num >= 1 && num <= 4294967295);
-                    }
-                    return 0;
-                  }
-                  function is_ipv4(addr) {
-                    if (addr ~ /^([0-9]{1,3}\\.){3}[0-9]{1,3}(\/[0-9]{1,2})?$/) {
-                      split(addr, parts, "/"); if (parts[2] == "") parts[2] = 32;
-                      if (parts[2] < 0 || parts[2] > 32) return 0;
-                      split(parts[1], octets, "."); if (length(octets) != 4) return 0;
-                      for (i=1; i<=4; i++) if (octets[i] < 0 || octets[i] > 255) return 0;
-                      return 1;
-                    }
-                    return 0;
-                  }
-                  function is_ipv6(addr) {
-                    if (addr ~ /^([0-9a-fA-F:]+)(\/[0-9]{1,3})?$/) {
-                      split(addr, parts, "/"); if (parts[2] == "") parts[2] = 128;
-                      if (parts[2] < 0 || parts[2] > 128) return 0;
-                      return 1;
-                    }
-                    return 0;
-                  }
-                  /- (DOMAIN|IP-CIDR|SRC-IP-ASN|GEOIP)/ && !/GEOIP,category-/ {
-                    gsub(/^[ \t]+|[ \t]+$/, "", $0);
-                    gsub(/^- /, "", $0);
-                    split($0, parts, ",");
-                    
-                    rule_type = clean_value(parts[1]);
-                    value = (length(parts) >= 2) ? clean_value(parts[2]) : "";
-                    
-                    # Пропускаем GEOIP правила
-                    if (rule_type ~ /^GEOIP/) next;
-                    
-                    # Обработка SRC-IP-ASN правил
-                    if (rule_type ~ /SRC-IP-ASN|ASN/) {
-                      if (is_valid_asn(value)) {
-                        print "  - SRC-IP-ASN," value;
-                        asn_count++;
-                      }
-                      next;
-                    }
-                    
-                    # Существующая логика для доменов и IP
-                    if (rule_type ~ /DOMAIN/) {
-                      if (value ~ /\*/) {
-                        if (value ~ /^\*/) { 
-                          gsub(/^\*\./, "", value); 
-                          print "  - DOMAIN-SUFFIX," value; domain_count++;
-                        }
-                        else if (value ~ /\*$/) { 
-                          gsub(/\*$/, "", value); 
-                          print "  - DOMAIN-KEYWORD," value; domain_count++;
-                        }
-                        else { 
-                          print "  - DOMAIN," value; domain_count++; 
-                        }
-                      } else {
-                        gsub(/^(\.)?/, "", value);
-                        print "  - DOMAIN-SUFFIX," value; domain_count++;
-                      }
-                    }
-                    else if (rule_type ~ /IP-CIDR/) {
-                      if (is_ipv4(value)) {
-                        if (value !~ /\//) value = value "/32";
-                        print "  - IP-CIDR," value ",no-resolve"; ip_count++;
-                      }
-                      else if (is_ipv6(value)) {
-                        if (value !~ /\//) value = value "/128";
-                        print "  - IP-CIDR6," value ",no-resolve"; ip_count++;
-                      }
-                    }
-                  }
-                  END {
-                    print "# STATS: domains=" domain_count ", ips=" ip_count ", asn=" asn_count > "/dev/stderr";
-                  }EOF_AWK;;
+                awk -v safe_name="$safe_name" -f .github/scripts/process_yaml.awk > "output/${safe_name}.yaml"
+                ;;
               
               *)
                 echo "❌ Unsupported type: $type for $url"
                 exit 1
                 ;;
-            esac > "output/${safe_name}.yaml"
+            esac
             
             # Валидация
             if [ ! -s "output/${safe_name}.yaml" ]; then
@@ -277,11 +85,11 @@ jobs:
             asn=$(grep -c "SRC-IP-ASN" "output/${safe_name}.yaml" 2>/dev/null || echo 0)
             total=$((domains + ips + regex + asn))
             
-            echo "✅ Created $safe_name.yaml ($total rules: $domainsD/$ipsI/$regexR/$asnA)"
+            echo "✅ Created $safe_name.yaml ($total rules: ${domains}D/${ips}I/${regex}R/${asn}A)"
             
             # Подготовка описания для релиза
             file_size=$(numfmt --to=iec-i --suffix=B --format="%.1f" $(stat -c%s "output/${safe_name}.yaml") 2>/dev/null || echo "unknown size")
-            file_list+="- $safe_name.yaml ($file_size, $total rules | $domainsD/$ipsI/$regexR/$asnA | src: $type)\n"
+            file_list+="- $safe_name.yaml ($file_size, $total rules | ${domains}D/${ips}I/${regex}R/${asn}A | src: $type)\n"
           done
           
           echo "files_list<<EOF" >> $GITHUB_ENV
@@ -321,16 +129,6 @@ jobs:
             rules:
               - SRC-IP-ASN,12345,DIRECT  # Прямое подключение для ASN 12345
               - SRC-IP-ASN,67890,PROXY   # Прокси для ASN 67890
-            ```
-            
-            **🔧 Пример подключения провайдера:**
-            ```yaml
-            rule-providers:
-              asn-rules:
-                type: http
-                url: "https://github.com/${{ github.repository }}/releases/download/${{ env.RELEASE_TAG }}/asn-rules.yaml"
-                path: ./ruleset/asn-rules.yaml
-                interval: 21600
             ```
           files: |
             output/*.yaml
