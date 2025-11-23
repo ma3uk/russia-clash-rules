@@ -162,7 +162,7 @@ jobs:
                   domain = substr($0, 6);
                   gsub(/^[ \t]+|[ \t]+$/, "", domain);
                   # CORRECT YAML: 2 spaces indentation
-                  print "  - DOMAIN," domain;
+                  print "  - DOMAIN-SUFFIX," domain;
                   next;
                 }
                 else if ($0 ~ /^regexp:/) {
