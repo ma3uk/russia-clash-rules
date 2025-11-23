@@ -28,7 +28,6 @@ jobs:
             ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/category-ads-all.txt"]="ads-all"
             ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/discord.txt"]="discord"
             ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/google.txt"]="google"
-            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/private.txt"]="private"
             ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/refilter.txt"]="refilter"
             ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/ru-blocked-all.txt"]="ru-blocked-all"
             ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/ru-blocked.txt"]="ru-blocked"
