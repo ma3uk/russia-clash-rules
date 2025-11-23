@@ -159,29 +159,12 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ env.RELEASE_TAG }}
-          name: "Clash Rules $(date +'%Y-%m-%d %H:%M')"
+          name: "Clash Rules"
           body: |
-            🤖 Автоматически сгенерированные правила для Clash с поддержкой V2Ray-форматов.
-            ⏰ Обновлено: $(date +'%Y-%m-%d %H:%M UTC')
             
             **Доступные файлы:**
             ${{ env.files_list }}
             
-            🔧 **Поддерживаемые префиксы V2Ray:**
-            - `domain:` → `DOMAIN-SUFFIX` (или `DOMAIN-KEYWORD` для wildcard)
-            - `full:` → `DOMAIN`
-            - `regexp:` → `DOMAIN-REGEX` (с экранированием обратных слешей)
-            - `geosite:` → игнорируется (не поддерживается в Clash)
-            
-            💡 **Пример подключения в Clash:**
-            ```yaml
-            rule-providers:
-              anti-ads:
-                type: http
-                url: "https://github.com/${{ github.repository }}/releases/download/${{ env.RELEASE_TAG }}/anti-ads.yaml"
-                path: ./ruleset/anti-ads.yaml
-                interval: 21600  # 6 часов
-            ```
           files: |
             output/*.yaml
           draft: false
