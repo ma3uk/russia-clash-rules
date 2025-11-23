@@ -161,9 +161,7 @@ jobs:
                   }
                   END {
                     print "# STATS: domains=" domain_count ", ips=" ip_count ", regex=" regex_count ", asn=" asn_count > "/dev/stderr";
-                  }
-EOF_AWK
-                ;;
+                  }EOF_AWK;;
               
               yaml)
                 # Обработка существующих YAML файлов с поддержкой ASN
@@ -258,9 +256,7 @@ EOF_AWK
                   }
                   END {
                     print "# STATS: domains=" domain_count ", ips=" ip_count ", asn=" asn_count > "/dev/stderr";
-                  }
-EOF_AWK
-                ;;
+                  }EOF_AWK;;
               
               *)
                 echo "❌ Unsupported type: $type for $url"
