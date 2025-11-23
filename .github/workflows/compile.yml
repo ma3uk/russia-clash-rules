@@ -1,4 +1,4 @@
-name: Universal Clash Rules Converter (with SRC-IP-ASN)
+name: Convert Domain Lists to Clash YAML (Full V2Ray Support)
 
 on:
   schedule:
@@ -18,12 +18,11 @@ jobs:
       - name: 📂 Create output directory
         run: mkdir -p output
 
-      - name: 🔍 Process domain lists (TXT + YAML + ASN)
+      - name: 🔍 Process domain lists with full V2Ray conversion
         id: process_files
         run: |
-          # ИСТОЧНИКИ: URL -> конфиг (тип, имя)
-          # Формат: "url|type|custom_name"
-          sources=(
+          # МАССИВ ИСТОЧНИКОВ: URL -> Желаемое имя файла
+          declare -A sources=(
             ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/antifilter-download-community.txt"]="antifilter-community"
             ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/antifilter-download.txt"]="antifilter"
             ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/category-ads-all.txt"]="ads-all"
@@ -37,40 +36,171 @@ jobs:
             ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/win-update.txt"]="win-update"
             ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/youtube.txt"]="youtube"
             ["https://raw.githubusercontent.com/dartraiden/no-russia-hosts/refs/heads/master/hosts.txt"]="blocked-from-outside"
-            ["https://raw.githubusercontent.com/ma3uk/sing-box-rules/refs/heads/main/yaml/akamai.yaml"]="akamai"
           )
           
           file_list=""
           
-          for source in "${sources[@]}"; do
-            IFS='|' read -r url type custom_name <<< "$source"
+          for url in "${!sources[@]}"; do
+            custom_name="${sources[$url]}"
             safe_name=$(echo "$custom_name" | 
                         tr '[:upper:]' '[:lower:]' | 
                         sed 's/[^a-z0-9._-]/_/g' |
                         sed 's/__/_/g' |
                         sed 's/^_//;s/_$//')
             
-            echo "📥 Processing $url ($type) → $safe_name.yaml"
+            echo "📥 Processing $url → $safe_name.yaml"
             
-            # Определяем тип обработки
-            case "$type" in
-              txt|v2ray)
-                curl -sfL "$url" | 
-                grep -v '^#\|^$\|://' | 
-                sed -E '/^[[:space:]]*$/d' |
-                awk -v safe_name="$safe_name" -f .github/scripts/process_txt.awk > "output/${safe_name}.yaml"
-                ;;
+            # Скачиваем и преобразуем с полной поддержкой V2Ray
+            curl -sfL "$url" | 
+            grep -v '^#\|^$\|://' |          # Удаляем комментарии и пустые строки
+            sed -E '/^[[:space:]]*$/d' |     # Удаляем оставшиеся пустые строки
+            awk -v name="$safe_name" '
+              BEGIN { 
+                print "payload:" 
+                domain_count = 0
+                ip_count = 0
+                regex_count = 0
+              }
               
-              yaml)
-                curl -sfL "$url" | 
-                awk -v safe_name="$safe_name" -f .github/scripts/process_yaml.awk > "output/${safe_name}.yaml"
-                ;;
+              function is_ipv4(addr) {
+                # Проверяем IPv4 адрес или CIDR
+                if (addr ~ /^([0-9]{1,3}\\.){3}[0-9]{1,3}(\/[0-9]{1,2})?$/) {
+                  split(addr, parts, "/")
+                  if (parts[2] == "") parts[2] = 32
+                  if (parts[2] < 0 || parts[2] > 32) return 0
+                  
+                  split(parts[1], octets, ".")
+                  if (length(octets) != 4) return 0
+                  for (i=1; i<=4; i++) {
+                    if (octets[i] < 0 || octets[i] > 255) return 0
+                  }
+                  return 1
+                }
+                return 0
+              }
               
-              *)
-                echo "❌ Unsupported type: $type for $url"
-                exit 1
-                ;;
-            esac
+              function is_ipv6(addr) {
+                # Проверяем IPv6 адрес или CIDR
+                if (addr ~ /^([0-9a-fA-F:]+)(\/[0-9]{1,3})?$/) {
+                  split(addr, parts, "/")
+                  if (parts[2] == "") parts[2] = 128
+                  if (parts[2] < 0 || parts[2] > 128) return 0
+                  return 1
+                }
+                return 0
+              }
+              
+              {
+                gsub(/^[ \t]+|[ \t]+$/, "", $0);  # Удаляем пробелы по краям
+                
+                # Полностью игнорируем geosite: правила
+                if ($0 ~ /^geosite:/) {
+                  next;
+                }
+                
+                # Обработка V2Ray префиксов
+                if ($0 ~ /^domain:/) {
+                  domain = substr($0, 8);
+                  gsub(/^[ \t]+|[ \t]+$/, "", domain);
+                  
+                  if (domain ~ /\*/) {
+                    if (domain ~ /^\*/) {
+                      gsub(/^\*\./, "", domain);
+                      print "  - DOMAIN-SUFFIX," domain;
+                      domain_count++;
+                    } else if (domain ~ /\*$/) {
+                      gsub(/\*$/, "", domain);
+                      print "  - DOMAIN-KEYWORD," domain;
+                      domain_count++;
+                    } else {
+                      print "  - DOMAIN," domain;
+                      domain_count++;
+                    }
+                  } else {
+                    print "  - DOMAIN-SUFFIX," domain;
+                    domain_count++;
+                  }
+                }
+                else if ($0 ~ /^full:/) {
+                  domain = substr($0, 6);
+                  gsub(/^[ \t]+|[ \t]+$/, "", domain);
+                  print "  - DOMAIN," domain;
+                  domain_count++;
+                }
+                else if ($0 ~ /^regexp:/) {
+                  regex = substr($0, 9);
+                  gsub(/^[ \t]+|[ \t]+$/, "", regex);
+                  gsub(/\\/, "\\\\", regex);  # Экранируем обратные слеши
+                  print "  - DOMAIN-REGEX," regex;
+                  regex_count++;
+                }
+                else if ($0 ~ /^ipcidr:/) {
+                  ip_range = substr($0, 9);
+                  gsub(/^[ \t]+|[ \t]+$/, "", ip_range);
+                  
+                  if (is_ipv4(ip_range)) {
+                    if (ip_range !~ /\//) ip_range = ip_range "/32";
+                    print "  - IP-CIDR," ip_range ",no-resolve";
+                    ip_count++;
+                  }
+                  else if (is_ipv6(ip_range)) {
+                    if (ip_range !~ /\//) ip_range = ip_range "/128";
+                    print "  - IP-CIDR6," ip_range ",no-resolve";
+                    ip_count++;
+                  }
+                  else {
+                    # Не распознанный формат - пропускаем
+                    next;
+                  }
+                }
+                else {
+                  # Автоматическое определение типа для строк без префикса
+                  if (is_ipv4($0)) {
+                    ip = $0;
+                    if (ip !~ /\//) ip = ip "/32";
+                    print "  - IP-CIDR," ip ",no-resolve";
+                    ip_count++;
+                  }
+                  else if (is_ipv6($0)) {
+                    ip = $0;
+                    if (ip !~ /\//) ip = ip "/128";
+                    print "  - IP-CIDR6," ip ",no-resolve";
+                    ip_count++;
+                  }
+                  else if ($0 ~ /^regexp:/) {
+                    # На случай если префикс в середине строки
+                    regex = substr($0, index($0, ":") + 1);
+                    gsub(/^[ \t]+|[ \t]+$/, "", regex);
+                    gsub(/\\/, "\\\\", regex);
+                    print "  - DOMAIN-REGEX," regex;
+                    regex_count++;
+                  }
+                  else if ($0 ~ /\*/) {
+                    # Обработка wildcard доменов без префикса
+                    if ($0 ~ /^\*/) {
+                      gsub(/^\*\./, "", $0);
+                      print "  - DOMAIN-SUFFIX," $0;
+                      domain_count++;
+                    } else if ($0 ~ /\*$/) {
+                      gsub(/\*$/, "", $0);
+                      print "  - DOMAIN-KEYWORD," $0;
+                      domain_count++;
+                    } else {
+                      print "  - DOMAIN," $0;
+                      domain_count++;
+                    }
+                  } else {
+                    # Стандартные домены
+                    print "  - DOMAIN-SUFFIX," $0;
+                    domain_count++;
+                  }
+                }
+              }
+              
+              END {
+                print "# STATS: domains=" domain_count ", ips=" ip_count ", regex=" regex_count > "/dev/stderr";
+              }
+            ' > "output/${safe_name}.yaml"
             
             # Валидация
             if [ ! -s "output/${safe_name}.yaml" ]; then
@@ -78,20 +208,20 @@ jobs:
               exit 1
             fi
             
-            # Статистика
+            # Собираем статистику
             domains=$(grep -c "DOMAIN-" "output/${safe_name}.yaml" 2>/dev/null || echo 0)
             ips=$(grep -c "IP-CIDR" "output/${safe_name}.yaml" 2>/dev/null || echo 0)
             regex=$(grep -c "DOMAIN-REGEX" "output/${safe_name}.yaml" 2>/dev/null || echo 0)
-            asn=$(grep -c "SRC-IP-ASN" "output/${safe_name}.yaml" 2>/dev/null || echo 0)
-            total=$((domains + ips + regex + asn))
+            total=$((domains + ips + regex))
             
-            echo "✅ Created $safe_name.yaml ($total rules: ${domains}D/${ips}I/${regex}R/${asn}A)"
+            echo "✅ Created $safe_name.yaml ($total rules: $domains domains, $ips IPs, $regex regex)"
             
-            # Подготовка описания для релиза
+            # Собираем список для описания релиза
             file_size=$(numfmt --to=iec-i --suffix=B --format="%.1f" $(stat -c%s "output/${safe_name}.yaml") 2>/dev/null || echo "unknown size")
-            file_list+="- $safe_name.yaml ($file_size, $total rules | ${domains}D/${ips}I/${regex}R/${asn}A | src: $type)\n"
+            file_list+="- $safe_name.yaml ($file_size, $total rules: $domainsD/$ipsI/$regexR)\n"
           done
           
+          # Сохраняем список файлов для шага релиза
           echo "files_list<<EOF" >> $GITHUB_ENV
           echo -e "$file_list" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
@@ -100,35 +230,44 @@ jobs:
         id: tag
         run: echo "RELEASE_TAG=v$(date +'%Y%m%d%H')" >> $GITHUB_ENV
 
-      - name: 📤 Create GitHub Release
+      - name: 📤 Create GitHub Release with Individual Files
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           name: "Clash Rules $(date +'%Y-%m-%d %H:%M')"
           body: |
-            🌐 Универсальный конвертер правил для Clash с поддержкой SRC-IP-ASN
+            🤖 Автоматически сгенерированные правила для Clash с полной поддержкой V2Ray-форматов.
             ⏰ Обновлено: $(date +'%Y-%m-%d %H:%M UTC')
             
-            **📦 Обработанные файлы:**
+            **Доступные файлы:**
             ${{ env.files_list }}
             
-            **⚙️ Поддерживаемые форматы правил:**
-            - **Домены:** `DOMAIN`, `DOMAIN-SUFFIX`, `DOMAIN-KEYWORD`, `DOMAIN-REGEX`
-            - **IP-адреса:** `IP-CIDR`, `IP-CIDR6` (с автоматическим no-resolve)
-            - **ASN маршруты:** `SRC-IP-ASN` (валидация номеров ASN)
-            - **Игнорируемые:** `GEOIP`, `geosite:`
+            🔧 **Поддерживаемые префиксы V2Ray:**
+            - `domain:` → `DOMAIN-SUFFIX`/`DOMAIN-KEYWORD`/`DOMAIN`
+            - `full:` → `DOMAIN`
+            - `regexp:` → `DOMAIN-REGEX` (с двойным экранированием `\`)
+            - `ipcidr:` → `IP-CIDR`/`IP-CIDR6` (с автоматическим определением версии IP)
+            - `geosite:` → **полностью удаляется** (не поддерживается в Clash как отдельное правило)
             
-            **🔄 Особенности обработки ASN:**
-            - Поддержка префиксов: `src-ip-asn:`, `src-asn:`, `asn:`
-            - Автоматическая валидация ASN (диапазон 1-4294967295)
-            - Преобразование в стандартный формат Clash: `SRC-IP-ASN,12345`
-            - Удаление некорректных ASN номеров
+            🌐 **Поддержка IP-адресов:**
+            - Автоматическое определение IPv4/IPv6
+            - Добавление маски по умолчанию (/32 для IPv4, /128 для IPv6)
+            - Проверка валидности IP-адресов перед добавлением
             
-            **💡 Примеры использования ASN правил в Clash:**
+            💡 **Пример подключения в Clash:**
             ```yaml
-            rules:
-              - SRC-IP-ASN,12345,DIRECT  # Прямое подключение для ASN 12345
-              - SRC-IP-ASN,67890,PROXY   # Прокси для ASN 67890
+            rule-providers:
+              anti-ads:
+                type: http
+                url: "https://github.com/${{ github.repository }}/releases/download/${{ env.RELEASE_TAG }}/anti-ads.yaml"
+                path: ./ruleset/anti-ads.yaml
+                interval: 21600  # 6 часов
+              
+              ip-blocks:
+                type: http
+                url: "https://github.com/${{ github.repository }}/releases/download/${{ env.RELEASE_TAG }}/ip-rules.yaml"
+                path: ./ruleset/ip-blocks.yaml
+                interval: 21600
             ```
           files: |
             output/*.yaml
