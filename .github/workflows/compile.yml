@@ -23,9 +23,19 @@ jobs:
         run: |
           # МАССИВ ИСТОЧНИКОВ: URL -> Желаемое имя файла
           declare -A sources=(
-            ["https://raw.githubusercontent.com/privacy-protection-tools/anti-AD/master/anti-ad-domains.txt"]="anti-ads"
-            ["https://raw.githubusercontent.com/cbuijs/adblock-dns/master/adb-dns-list.txt"]="trackers"
-            ["https://example.com/v2ray-list.txt"]="v2ray-rules"
+            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/antifilter-download-community.txt"]="antifilter-community"
+            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/antifilter-download.txt"]="antifilter"
+            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/category-ads-all.txt"]="ads-all"
+            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/discord.txt"]="discord"
+            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/google.txt"]="google"
+            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/refilter.txt"]="refilter"
+            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/ru-blocked-all.txt"]="ru-blocked-all"
+            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/ru-blocked.txt"]="ru-blocked"
+            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/win-extra.txt"]="win-extra"
+            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/win-spy.txt"]="win-spy"
+            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/win-update.txt"]="win-update"
+            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/youtube.txt"]="youtube"
+            ["https://raw.githubusercontent.com/dartraiden/no-russia-hosts/refs/heads/master/hosts.txt"]="blocked-from-outside"
           )
           
           file_list=""
