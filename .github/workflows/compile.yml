@@ -23,6 +23,18 @@ jobs:
           urls=(
             "https://github.com/runetfreedom/russia-blocked-geosite/releases/download/202511231512/antifilter-download-community.txt"
             "https://github.com/runetfreedom/russia-blocked-geosite/releases/download/202511231512/antifilter-download.txt"
+            "https://github.com/runetfreedom/russia-blocked-geosite/releases/download/202511231512/category-ads-all.txt"
+            "https://github.com/runetfreedom/russia-blocked-geosite/releases/download/202511231512/discord.txt"
+            "https://github.com/runetfreedom/russia-blocked-geosite/releases/download/202511231512/google.txt"
+            "https://github.com/runetfreedom/russia-blocked-geosite/releases/download/202511231512/private.txt"
+            "https://github.com/runetfreedom/russia-blocked-geosite/releases/download/202511231512/refilter.txt"
+            "https://github.com/runetfreedom/russia-blocked-geosite/releases/download/202511231512/ru-blocked-all.txt"
+            "https://github.com/runetfreedom/russia-blocked-geosite/releases/download/202511231512/ru-blocked.txt"
+            "https://github.com/runetfreedom/russia-blocked-geosite/releases/download/202511231512/win-extra.txt"
+            "https://github.com/runetfreedom/russia-blocked-geosite/releases/download/202511231512/win-spy.txt"
+            "https://github.com/runetfreedom/russia-blocked-geosite/releases/download/202511231512/win-update.txt"
+            "https://github.com/runetfreedom/russia-blocked-geosite/releases/download/202511231512/youtube.txt"
+            "https://raw.githubusercontent.com/dartraiden/no-russia-hosts/refs/heads/master/hosts.txt"
           )
           
           for url in "${urls[@]}"; do
@@ -49,14 +61,9 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ env.RELEASE_TAG }}
-          name: "Clash Rules Update $(date +'%Y-%m-%d %H:%M')"
+          name: "Clash Rules Update"
           body: |
-            Автоматически сгенерированные YAML-правила для Clash.
-            Обновлено: $(date +'%Y-%m-%d %H:%M UTC')
-            
-            **Списки включают:**
-            - antifilter-download-community.yaml
-            - antifilter-download.yaml
+            YAML-правила для Clash.
           files: |
             output/*.yaml
           draft: false
