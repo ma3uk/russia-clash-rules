@@ -1,4 +1,4 @@
-name: Convert Domain Lists to Clash YAML (Individual Files)
+name: Convert Domain Lists to Clash YAML (V2Ray Support)
 
 on:
   schedule:
@@ -18,40 +18,127 @@ jobs:
       - name: 📂 Create output directory
         run: mkdir -p output
 
-      - name: 🔍 Process domain lists
+      - name: 🔍 Process domain lists conversion
+        id: process_files
         run: |
-          urls=(
-            "https://github.com/runetfreedom/russia-blocked-geosite/releases/download/202511231512/antifilter-download-community.txt"
-            "https://github.com/runetfreedom/russia-blocked-geosite/releases/download/202511231512/antifilter-download.txt"
-            "https://github.com/runetfreedom/russia-blocked-geosite/releases/download/202511231512/category-ads-all.txt"
-            "https://github.com/runetfreedom/russia-blocked-geosite/releases/download/202511231512/discord.txt"
-            "https://github.com/runetfreedom/russia-blocked-geosite/releases/download/202511231512/google.txt"
-            "https://github.com/runetfreedom/russia-blocked-geosite/releases/download/202511231512/private.txt"
-            "https://github.com/runetfreedom/russia-blocked-geosite/releases/download/202511231512/refilter.txt"
-            "https://github.com/runetfreedom/russia-blocked-geosite/releases/download/202511231512/ru-blocked-all.txt"
-            "https://github.com/runetfreedom/russia-blocked-geosite/releases/download/202511231512/ru-blocked.txt"
-            "https://github.com/runetfreedom/russia-blocked-geosite/releases/download/202511231512/win-extra.txt"
-            "https://github.com/runetfreedom/russia-blocked-geosite/releases/download/202511231512/win-spy.txt"
-            "https://github.com/runetfreedom/russia-blocked-geosite/releases/download/202511231512/win-update.txt"
-            "https://github.com/runetfreedom/russia-blocked-geosite/releases/download/202511231512/youtube.txt"
-            "https://raw.githubusercontent.com/dartraiden/no-russia-hosts/refs/heads/master/hosts.txt"
+          # МАССИВ ИСТОЧНИКОВ: URL -> Желаемое имя файла
+          declare -A sources=(
+            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/antifilter-download-community.txt"]="antifilter-community"
+            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/antifilter-download.txt"]="antifilter"
+            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/category-ads-all.txt"]="ads-all"
+            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/discord.txt"]="discord"
+            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/google.txt"]="google"
+            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/private.txt"]="private"
+            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/refilter.txt"]="refilter"
+            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/ru-blocked-all.txt"]="ru-blocked-all"
+            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/ru-blocked.txt"]="ru-blocked"
+            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/win-extra.txt"]="win-extra"
+            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/win-spy.txt"]="win-spy"
+            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/win-update.txt"]="win-update"
+            ["https://github.com/runetfreedom/russia-blocked-geosite/releases/latest/download/youtube.txt"]="youtube"
+            ["https://raw.githubusercontent.com/dartraiden/no-russia-hosts/refs/heads/master/hosts.txt"]="blocked-from-outside"
           )
           
-          for url in "${urls[@]}"; do
-            filename=$(basename "$url" | sed 's/\.txt$//' | tr '/' '_')
-            echo "📥 Processing $url → ${filename}.yaml"
+          file_list=""
+          
+          for url in "${!sources[@]}"; do
+            custom_name="${sources[$url]}"
+            safe_name=$(echo "$custom_name" | 
+                        tr '[:upper:]' '[:lower:]' | 
+                        sed 's/[^a-z0-9._-]/_/g' |
+                        sed 's/__/_/g' |
+                        sed 's/^_//;s/_$//')
             
+            echo "📥 Processing $url → $safe_name.yaml"
+            
+            # Скачиваем и преобразуем с поддержкой V2Ray префиксов
             curl -sfL "$url" | 
-            grep -v '^#\|^$\|://' |  # Удаляем комментарии, пустые строки и URL
-            sed -E '/^[[:space:]]*$/d' |  # Удаляем оставшиеся пустые строки
-            awk 'BEGIN {print "payload:"} {print "  - DOMAIN-SUFFIX," $0}' > "output/${filename}.yaml"
+            grep -v '^#\|^$\|://' |          # Удаляем комментарии и пустые строки
+            sed -E '/^[[:space:]]*$/d' |     # Удаляем оставшиеся пустые строки
+            awk -v name="$safe_name" '
+              BEGIN { print "payload:" }
+              {
+                # Удаляем возможные пробелы в начале/конце
+                gsub(/^[ \t]+|[ \t]+$/, "", $0);
+                
+                # Обработка V2Ray префиксов
+                if ($0 ~ /^domain:/) {
+                  domain = substr($0, 8);  # Убираем "domain:"
+                  # Определяем тип правила на основе наличия точек и звёздочек
+                  if (domain ~ /\*/) {
+                    # Если есть звёздочка - это DOMAIN-KEYWORD или DOMAIN-SUFFIX
+                    if (domain ~ /^\*/) {
+                      # *.example.com → DOMAIN-SUFFIX,example.com
+                      gsub(/^\*\./, "", domain);
+                      print "  - DOMAIN-SUFFIX," domain;
+                    } else if (domain ~ /\*$/) {
+                      # example* → DOMAIN-KEYWORD,example
+                      gsub(/\*$/, "", domain);
+                      print "  - DOMAIN-KEYWORD," domain;
+                    } else {
+                      # example*.com → DOMAIN,example*.com (редкий случай)
+                      print "  - DOMAIN," domain;
+                    }
+                  } else {
+                    # example.com → DOMAIN-SUFFIX,example.com
+                    print "  - DOMAIN-SUFFIX," domain;
+                  }
+                }
+                else if ($0 ~ /^full:/) {
+                  # full:example.com → DOMAIN,example.com
+                  domain = substr($0, 6);
+                  print "  - DOMAIN," domain;
+                }
+                else if ($0 ~ /^regexp:/) {
+                  # regexp:^example\.com$ → DOMAIN-REGEX,^example\.com$
+                  regex = substr($0, 9);
+                  # Экранируем обратные слеши для YAML (двойной слеш)
+                  gsub(/\\/, "\\\\", regex);
+                  print "  - DOMAIN-REGEX," regex;
+                }
+                else if ($0 ~ /^geosite:/) {
+                  # Пропускаем geosite правила (не поддерживаются в Clash как отдельные правила)
+                  next;
+                }
+                else {
+                  # Стандартные домены без префикса
+                  if ($0 ~ /\*/) {
+                    # Обработка wildcard доменов
+                    if ($0 ~ /^\*/) {
+                      gsub(/^\*\./, "", $0);
+                      print "  - DOMAIN-SUFFIX," $0;
+                    } else if ($0 ~ /\*$/) {
+                      gsub(/\*$/, "", $0);
+                      print "  - DOMAIN-KEYWORD," $0;
+                    } else {
+                      print "  - DOMAIN," $0;
+                    }
+                  } else {
+                    # Обычный домен
+                    print "  - DOMAIN-SUFFIX," $0;
+                  }
+                }
+              }
+            ' > "output/${safe_name}.yaml"
             
-            if [ ! -s "output/${filename}.yaml" ]; then
-              echo "❌ Empty file generated for $url"
+            # Валидация
+            if [ ! -s "output/${safe_name}.yaml" ]; then
+              echo "❌ EMPTY FILE: $safe_name.yaml from $url"
               exit 1
             fi
-            echo "✅ Created output/${filename}.yaml ($(wc -l < "output/${filename}.yaml") lines)"
+            
+            domains_count=$(grep -c "DOMAIN-" "output/${safe_name}.yaml" || true)
+            echo "✅ Created $safe_name.yaml ($domains_count rules)"
+            
+            # Собираем список для описания релиза
+            file_size=$(numfmt --to=iec-i --suffix=B --format="%.1f" $(stat -c%s "output/${safe_name}.yaml") 2>/dev/null || echo "unknown size")
+            file_list+="- $safe_name.yaml ($file_size, $domains_count rules)\n"
           done
+          
+          # Сохраняем список файлов для шага релиза
+          echo "files_list<<EOF" >> $GITHUB_ENV
+          echo -e "$file_list" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
 
       - name: 🏷️ Generate release tag
         id: tag
@@ -61,9 +148,13 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ env.RELEASE_TAG }}
-          name: "Clash Rules Update"
+          name: "Clash Rules $(date +'%Y-%m-%d %H:%M')"
           body: |
-            YAML-правила для Clash.
+            🤖 Автоматически сгенерированные правила для Clash.
+            
+            **Доступные файлы:**
+            ${{ env.files_list }}
+
           files: |
             output/*.yaml
           draft: false
@@ -71,6 +162,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 🗑️ Cleanup (optional)
+      - name: 🗑️ Cleanup
         if: always()
         run: rm -rf output/
