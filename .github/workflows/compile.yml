@@ -154,7 +154,7 @@ jobs:
                     print "  - DOMAIN-KEYWORD," domain;
                   } else {
                     # CORRECT YAML: 2 spaces indentation
-                    print "  - DOMAIN," domain;
+                    print "  - DOMAIN-SUFFIX," domain;
                   }
                   next;
                 }
