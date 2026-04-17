@@ -52,7 +52,7 @@ jobs:
             ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/discord-ip.txt"]="discord-ip"
             ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/digitalocean.txt"]="digitalocean"
             ["https://raw.githubusercontent.com/legiz-ru/mihomo-rule-sets/refs/heads/main/ru-bundle/rknasnblock.list"]="rknasnblock"
-            ["https://github.com/tread-lightly/CyberOK_Skipa_ips/blob/main/lists/skipa_cidr.txt"]="cyberokscan"
+            ["https://raw.githubusercontent.com/tread-lightly/CyberOK_Skipa_ips/refs/heads/main/lists/skipa_cidr.txt"]="cyberokscan"
             ["https://raw.githubusercontent.com/C24Be/AS_Network_List/refs/heads/main/blacklists/blacklist.txt"]="rknscan"
           )
           
