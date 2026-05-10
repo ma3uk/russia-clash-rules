@@ -54,6 +54,7 @@ jobs:
             ["https://raw.githubusercontent.com/legiz-ru/mihomo-rule-sets/refs/heads/main/ru-bundle/rknasnblock.list"]="rknasnblock"
             ["https://raw.githubusercontent.com/tread-lightly/CyberOK_Skipa_ips/refs/heads/main/lists/skipa_cidr.txt"]="cyberokscan"
             ["https://raw.githubusercontent.com/C24Be/AS_Network_List/refs/heads/main/blacklists/blacklist.txt"]="rknscan"
+            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/unicom-shanghai.txt"]="unicom-shanghai"
           )
           
           file_list=""
