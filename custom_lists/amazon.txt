@@ -6,7 +6,6 @@ aws.dev
 amazontrust.com
 awstrust.com
 ss2.us
-  - DOMAIN-WILDCARD,*.aws
 acmvalidations.com
 acmvalidationsaws.com
 aesworkshops.com
