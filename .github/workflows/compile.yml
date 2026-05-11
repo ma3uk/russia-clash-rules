@@ -75,6 +75,12 @@ jobs:
             ["https://raw.githubusercontent.com/tread-lightly/CyberOK_Skipa_ips/refs/heads/main/lists/skipa_cidr.txt"]="cyberokscan"
             ["https://raw.githubusercontent.com/C24Be/AS_Network_List/refs/heads/main/blacklists/blacklist.txt"]="rknscan"
             ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/unicom-shanghai.txt"]="unicom-shanghai"
+            ["https://raw.githubusercontent.com/stclaird/Cloud-IP-Address-Ranges/refs/heads/main/ipfiles/godaddy-AS26496.ip.txt"]="godaddy"
+            ["https://raw.githubusercontent.com/stclaird/Cloud-IP-Address-Ranges/refs/heads/main/ipfiles/softlayer-ibm.ip.txt"]="ibm"
+            ["https://raw.githubusercontent.com/stclaird/Cloud-IP-Address-Ranges/refs/heads/main/ipfiles/linode.ip.txt"]="linode"
+            ["https://raw.githubusercontent.com/stclaird/Cloud-IP-Address-Ranges/refs/heads/main/ipfiles/a2hosting.ip.txt"]="a2hosting"
+            ["https://raw.githubusercontent.com/stclaird/Cloud-IP-Address-Ranges/refs/heads/main/ipfiles/dreamhost-AS26347.ip.txt"]="dreamhost"
+            ["https://raw.githubusercontent.com/stclaird/Cloud-IP-Address-Ranges/refs/heads/main/ipfiles/heroku-aws.ip.txt"]="heroku"
           )
           
           file_list=""
