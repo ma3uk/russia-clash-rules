@@ -1,4 +1,4 @@
-- name: Fetch prefixes for AS list
+        name: Fetch prefixes for AS list
         run: |
           declare -A AS_GROUPS=(
             ["cloudflare"]="13335 14789 132892"
