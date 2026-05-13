@@ -1,4 +1,22 @@
-        name: Fetch prefixes for AS list
+name: Fetch AS Prefixes
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * *"
+
+jobs:
+  fetch-prefixes:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Fetch prefixes for AS list
         run: |
           declare -A AS_GROUPS=(
             ["cloudflare"]="13335 14789 132892"
@@ -8,7 +26,7 @@
 
           mkdir -p AS_IP-CIDR
 
-          # Глобальные файлы
+          # Глобальные файлы для всех провайдеров
           all_global="AS_IP-CIDR/all_providers.txt"
           all_global_v4="AS_IP-CIDR/all_providers_v4.txt"
           all_global_v6="AS_IP-CIDR/all_providers_v6.txt"
@@ -33,7 +51,7 @@
 
               url="https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS${asn}"
 
-              # Проверка доступности сайта без редиректов
+              # Проверка доступности без редиректов
               status=$(curl -Is --max-redirs 0 "$url" | head -n 1 | awk '{print $2}')
 
               if [[ -z "$status" ]]; then
@@ -59,7 +77,7 @@
               as_file_v4="AS_IP-CIDR/${group}_${asn}_v4.txt"
               as_file_v6="AS_IP-CIDR/${group}_${asn}_v6.txt"
 
-              # Извлекаем все префиксы
+              # Все префиксы
               echo "$json" | jq -r '.data.prefixes[].prefix' > "$as_file"
 
               # IPv4
@@ -68,12 +86,12 @@
               # IPv6
               grep -E '^[0-9a-fA-F:]+:' "$as_file" > "$as_file_v6" || true
 
-              # Добавляем в групповые файлы
+              # В групповые файлы
               cat "$as_file" >> "$combined"
               cat "$as_file_v4" >> "$combined_v4"
               cat "$as_file_v6" >> "$combined_v6"
 
-              # Добавляем в глобальные файлы
+              # В глобальные файлы
               cat "$as_file" >> "$all_global"
               cat "$as_file_v4" >> "$all_global_v4"
               cat "$as_file_v6" >> "$all_global_v6"
@@ -87,9 +105,20 @@
             echo "  Group files saved: $group"
           done
 
-          # Глобальные файлы
+          # Глобальные файлы для всех провайдеров
           sort -u "$all_global" -o "$all_global"
           sort -u "$all_global_v4" -o "$all_global_v4"
           sort -u "$all_global_v6" -o "$all_global_v6"
 
           echo "Global provider files generated."
+
+      - name: Commit results
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add AS_IP-CIDR || true
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "Update AS prefix lists"
+          git push
