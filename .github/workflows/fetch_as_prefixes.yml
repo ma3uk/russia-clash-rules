@@ -1,9 +1,8 @@
 name: Fetch AS Prefixes
 
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: "0 3 * * *"
+schedule:
+    - cron: "0 */6 * * *"  # Every 6 hours
+  workflow_dispatch:       # Manual trigger
 
 jobs:
   fetch-prefixes:
