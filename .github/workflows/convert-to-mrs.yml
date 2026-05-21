@@ -1,0 +1,158 @@
+name: Convert to Mihomo MRS Format
+
+on:
+  workflow_run:
+    workflows: ["compile"]
+    types: [completed]
+
+jobs:
+  convert-to-mrs:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Create conversion script
+        run: |
+          cat > convert_to_mrs.py << 'SCRIPT'
+          #!/usr/bin/env python3
+          import os
+          import gzip
+          import struct
+          import json
+          import zlib
+          from pathlib import Path
+          from datetime import datetime
+          
+          MRS_MAGIC = b'MRS'
+          MRS_VERSION = 1
+          
+          def read_rules(file_path):
+              """Read rules from YAML file"""
+              rules = []
+              try:
+                  with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                      for line in f:
+                          line = line.strip()
+                          if any(x in line for x in ['IP-CIDR:', 'DOMAIN:', 'DOMAIN-SUFFIX:', 'IP6-CIDR:']):
+                              parts = line.split(':', 1)
+                              if len(parts) == 2:
+                                  rule = parts[1].strip().split(',')[0].strip()
+                                  if rule and rule not in rules:
+                                      rules.append(rule)
+              except Exception as e:
+                  print(f"Error reading {file_path}: {e}")
+              return rules
+          
+          def create_mrs(yaml_file):
+              """Convert YAML to MRS format"""
+              rules = read_rules(yaml_file)
+              if not rules:
+                  print(f"⚠ No rules in {yaml_file}")
+                  return None
+              
+              base_name = Path(yaml_file).stem
+              output_file = f"{base_name}.mrs"
+              
+              metadata = {
+                  'version': MRS_VERSION,
+                  'created': datetime.now().isoformat(),
+                  'count': len(rules),
+                  'source': Path(yaml_file).name
+              }
+              
+              payload = json.dumps({'metadata': metadata, 'rules': rules}, ensure_ascii=False)
+              compressed = gzip.compress(payload.encode('utf-8'), compresslevel=9)
+              
+              crc = zlib.crc32(compressed) & 0xffffffff
+              size = len(compressed)
+              
+              mrs_data = (
+                  MRS_MAGIC +
+                  struct.pack('B', MRS_VERSION) +
+                  struct.pack('>I', size) +
+                  struct.pack('>I', crc) +
+                  compressed
+              )
+              
+              with open(output_file, 'wb') as f:
+                  f.write(mrs_data)
+              
+              size_kb = os.path.getsize(output_file) / 1024
+              print(f"✓ {output_file} ({size_kb:.1f} KB, {len(rules)} rules)")
+              return output_file
+          
+          # Find and convert all YAML files
+          yaml_files = []
+          for root, dirs, files in os.walk('.'):
+              if '.git' in root or '__pycache__' in root:
+                  continue
+              for f in files:
+                  if f.endswith('.yaml'):
+                      yaml_files.append(os.path.join(root, f))
+          
+          if not yaml_files:
+              print("No YAML files found")
+              exit(1)
+          
+          mrs_files = []
+          for yaml_file in sorted(yaml_files):
+              mrs = create_mrs(yaml_file)
+              if mrs:
+                  mrs_files.append(mrs)
+          
+          # Save list of created files
+          with open('.mrs_files', 'w') as f:
+              for mrs in mrs_files:
+                  f.write(f"{mrs}\n")
+          
+          print(f"\n✅ Converted {len(mrs_files)} files")
+          SCRIPT
+          python convert_to_mrs.py
+      
+      - name: Get latest release
+        id: release
+        run: |
+          TAG=$(gh release list --limit 1 --json tagName -q '.[0].tagName')
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Upload MRS files to release
+        if: steps.release.outputs.tag != ''
+        run: |
+          while IFS= read -r mrs_file; do
+            if [ -f "$mrs_file" ]; then
+              echo "📤 Uploading $mrs_file..."
+              gh release upload "${{ steps.release.outputs.tag }}" "$mrs_file" --clobber
+            fi
+          done < .mrs_files
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Update release notes
+        if: steps.release.outputs.tag != ''
+        run: |
+          echo "## 📦 Mihomo MRS Files" > mrs_notes.md
+          echo "" >> mrs_notes.md
+          while IFS= read -r mrs_file; do
+            SIZE=$(ls -lh "$mrs_file" | awk '{print $5}')
+            echo "- \`$(basename $mrs_file)\` - $SIZE" >> mrs_notes.md
+          done < .mrs_files
+          echo "" >> mrs_notes.md
+          echo "**Format**: Compressed Mihomo Rule Set (MRS)" >> mrs_notes.md
+          echo "**Compression**: gzip + CRC32 verification" >> mrs_notes.md
+          
+          CURRENT_NOTES=$(gh release view "${{ steps.release.outputs.tag }}" --json body -q '.body')
+          echo "$CURRENT_NOTES" >> mrs_notes.md
+          
+          gh release edit "${{ steps.release.outputs.tag }}" -F mrs_notes.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
