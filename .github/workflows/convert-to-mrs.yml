@@ -27,38 +27,60 @@ jobs:
           sudo mv mihomo /usr/local/bin/
           mihomo -v
 
-      - name: 📝 Create Python validator script
+      - name: 📝 Create Python converter script for MRS
         run: |
-          cat > validate_ip.py << 'PYEOF'
+          cat > convert_to_mrs.py << 'PYEOF'
           import sys
           import ipaddress
-          
-          def process_ip(line):
+
+          def process_line(line):
               line = line.strip()
               if not line or not line.startswith('- '):
-                  return None
+                  return None, None
               line = line[2:]
+              
               parts = line.split(',', 1)
               if len(parts) != 2:
-                  return None
+                  return None, None
+                  
               rule_type = parts[0].strip()
-              ip_part = parts[1].strip()
-              if rule_type not in ('IP-CIDR', 'IP-CIDR6'):
-                  return None
-              try:
-                  network = ipaddress.ip_network(ip_part, strict=False)
-                  # Mihomo expects IP-CIDR for both IPv4 and IPv6 in rule-providers
-                  return f"  - IP-CIDR,{network}"
-              except ValueError:
-                  return None
-          
+              value = parts[1].strip()
+              
+              # For IP rules, strip "IP-CIDR," and normalize
+              if rule_type in ('IP-CIDR', 'IP-CIDR6'):
+                  try:
+                      network = ipaddress.ip_network(value, strict=False)
+                      return 'ipcidr', f"  - {network}"
+                  except ValueError:
+                      return None, None
+                      
+              # For domain rules, strip prefixes and use rule-provider format
+              elif rule_type == 'DOMAIN':
+                  return 'domain', f"  - {value}"
+              elif rule_type == 'DOMAIN-SUFFIX':
+                  return 'domain', f"  - .{value}"  # Mihomo uses '.' prefix for suffix
+              elif rule_type == 'DOMAIN-WILDCARD':
+                  return 'domain', f"  - {value}"
+                  
+              # DOMAIN-KEYWORD and DOMAIN-REGEX are not supported in optimized domain mrs
+              return None, None
+
           if __name__ == '__main__':
-              for line in sys.stdin:
-                  res = process_ip(line)
-                  if res:
-                      print(res)
+              ip_file = sys.argv[1]
+              domain_file = sys.argv[2]
+              
+              with open(ip_file, 'w') as f_ip, open(domain_file, 'w') as f_domain:
+                  f_ip.write("payload:\n")
+                  f_domain.write("payload:\n")
+                  
+                  for line in sys.stdin:
+                      rtype, formatted = process_line(line)
+                      if rtype == 'ipcidr':
+                          f_ip.write(formatted + "\n")
+                      elif rtype == 'domain':
+                          f_domain.write(formatted + "\n")
           PYEOF
-          chmod +x validate_ip.py
+          chmod +x convert_to_mrs.py
 
       - name: 🔍 Process domain lists with proper YAML formatting
         id: process_files
@@ -241,41 +263,38 @@ jobs:
             file_list+="- $safe_name.yaml ($file_size, $rules_count rules)\n"
 
             # ==========================================
-            # Validate IPs with Python and create MRS files
+            # Convert to MRS (Mihomo Rule Set)
             # ==========================================
-            echo "  🔍 Validating and converting to .mrs..."
+            echo "  📦 Converting to .mrs format..."
 
-            # 1. Domain rules (Fixed regex)
-            grep -E '^  - DOMAIN(-SUFFIX|-KEYWORD)?,' "output/${safe_name}.yaml" > "output/${safe_name}-domain-temp.yaml" 2>/dev/null || true
-            if [ -s "output/${safe_name}-domain-temp.yaml" ]; then
-              echo "payload:" > "output/${safe_name}-domain.yaml"
-              cat "output/${safe_name}-domain-temp.yaml" >> "output/${safe_name}-domain.yaml"
-              
-              if mihomo convert-ruleset domain yaml "output/${safe_name}-domain.yaml" "output/${safe_name}.mrs" >mihomo.log 2>&1; then
-                echo "  ✅ Created ${safe_name}.mrs (domain)"
-                mrs_size=$(numfmt --to=iec-i --suffix=B --format="%.1f" $(stat -c%s "output/${safe_name}.mrs") 2>/dev/null || echo "?")
-                file_list+="- ${safe_name}.mrs ($mrs_size)\n"
-              else
-                echo "  ⚠️ Failed to create ${safe_name}.mrs (domain): $(cat mihomo.log)"
-              fi
-              rm -f "output/${safe_name}-domain.yaml" "output/${safe_name}-domain-temp.yaml" mihomo.log
-            fi
+            # Generate clean rule-provider formatted YAMLs (strips prefixes)
+            cat "output/${safe_name}.yaml" | python3 convert_to_mrs.py "output/${safe_name}-ipcidr-temp.yaml" "output/${safe_name}-domain-temp.yaml"
 
-            # 2. IP rules (Python forces IP-CIDR for mihomo compatibility)
-            grep -E '^  - IP-CIDR6?,' "output/${safe_name}.yaml" | python3 validate_ip.py > "output/${safe_name}-ipcidr-temp.yaml" 2>/dev/null || true
-            if [ -s "output/${safe_name}-ipcidr-temp.yaml" ]; then
-              echo "payload:" > "output/${safe_name}-ipcidr.yaml"
-              cat "output/${safe_name}-ipcidr-temp.yaml" >> "output/${safe_name}-ipcidr.yaml"
-              
-              if mihomo convert-ruleset ipcidr yaml "output/${safe_name}-ipcidr.yaml" "output/${safe_name}-ipcidr.mrs" >mihomo.log 2>&1; then
+            # 1. Convert IP rules
+            ip_count=$(grep -c '^  -' "output/${safe_name}-ipcidr-temp.yaml" 2>/dev/null || echo 0)
+            if [ "$ip_count" -gt 0 ]; then
+              if mihomo convert-ruleset ipcidr yaml "output/${safe_name}-ipcidr-temp.yaml" "output/${safe_name}-ipcidr.mrs" >mihomo.log 2>&1; then
                 echo "  ✅ Created ${safe_name}-ipcidr.mrs"
                 mrs_size=$(numfmt --to=iec-i --suffix=B --format="%.1f" $(stat -c%s "output/${safe_name}-ipcidr.mrs") 2>/dev/null || echo "?")
                 file_list+="- ${safe_name}-ipcidr.mrs ($mrs_size)\n"
               else
                 echo "  ⚠️ Failed to create ${safe_name}-ipcidr.mrs: $(cat mihomo.log)"
               fi
-              rm -f "output/${safe_name}-ipcidr.yaml" "output/${safe_name}-ipcidr-temp.yaml" mihomo.log
             fi
+
+            # 2. Convert Domain rules
+            domain_count=$(grep -c '^  -' "output/${safe_name}-domain-temp.yaml" 2>/dev/null || echo 0)
+            if [ "$domain_count" -gt 0 ]; then
+              if mihomo convert-ruleset domain yaml "output/${safe_name}-domain-temp.yaml" "output/${safe_name}.mrs" >mihomo.log 2>&1; then
+                echo "  ✅ Created ${safe_name}.mrs (domain)"
+                mrs_size=$(numfmt --to=iec-i --suffix=B --format="%.1f" $(stat -c%s "output/${safe_name}.mrs") 2>/dev/null || echo "?")
+                file_list+="- ${safe_name}.mrs ($mrs_size)\n"
+              else
+                echo "  ⚠️ Failed to create ${safe_name}.mrs (domain): $(cat mihomo.log)"
+              fi
+            fi
+
+            rm -f "output/${safe_name}-ipcidr-temp.yaml" "output/${safe_name}-domain-temp.yaml" mihomo.log
           done
           
           echo "files_list<<EOF" >> $GITHUB_ENV
