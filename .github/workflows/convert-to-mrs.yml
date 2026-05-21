@@ -33,43 +33,30 @@ jobs:
           import sys
           import ipaddress
           
-          def validate_and_normalize(line):
-              """Validate and normalize IP/CIDR, return normalized or None"""
+          def process_ip(line):
               line = line.strip()
-              if not line:
+              if not line or not line.startswith('- '):
                   return None
-              
-              # Remove YAML prefix if present
-              if line.startswith('- '):
-                  line = line[2:]
-              
+              line = line[2:]
               parts = line.split(',', 1)
               if len(parts) != 2:
                   return None
-              
               rule_type = parts[0].strip()
               ip_part = parts[1].strip()
-              
-              # Only process IP rules
               if rule_type not in ('IP-CIDR', 'IP-CIDR6'):
                   return None
-              
               try:
-                  # Parse and normalize the network
                   network = ipaddress.ip_network(ip_part, strict=False)
-                  # Return normalized format
-                  return f"  - {rule_type},{network}"
+                  # Mihomo expects IP-CIDR for both IPv4 and IPv6 in rule-providers
+                  return f"  - IP-CIDR,{network}"
               except ValueError:
                   return None
           
           if __name__ == '__main__':
-              input_file = sys.argv[1] if len(sys.argv) > 1 else '/dev/stdin'
-              
-              with open(input_file, 'r') as f:
-                  for line in f:
-                      result = validate_and_normalize(line)
-                      if result:
-                          print(result)
+              for line in sys.stdin:
+                  res = process_ip(line)
+                  if res:
+                      print(res)
           PYEOF
           chmod +x validate_ip.py
 
@@ -170,14 +157,10 @@ jobs:
                   }
                 }
                 
-                # 2. IPv6/CIDR DETECTION (basic, will be validated by Python later)
+                # 2. IPv6/CIDR DETECTION
                 else if ($0 ~ /^[0-9a-fA-F:]+(\/[0-9]{1,3})?$/ || $0 ~ /^[0-9a-fA-F:]+\.[0-9\.]+(\/[0-9]{1,3})?$/) {
                   gsub(/[ \t]/, "", $0);
-                  # Basic sanity check - must contain at least one colon
-                  if ($0 ~ /:/) {
-                    print "  - IP-CIDR6," $0;
-                    next;
-                  }
+                  if ($0 ~ /:/) { print "  - IP-CIDR6," $0; next; }
                 }
                 
                 # 3. V2Ray prefix handling
@@ -260,38 +243,38 @@ jobs:
             # ==========================================
             # Validate IPs with Python and create MRS files
             # ==========================================
-            echo "  🔍 Validating IPs with Python..."
+            echo "  🔍 Validating and converting to .mrs..."
 
-            # Extract and validate domain rules
-            grep -E '^  - DOMAIN(,-SUFFIX|-KEYWORD)?,' "output/${safe_name}.yaml" > "output/${safe_name}-domain-temp.yaml" 2>/dev/null || true
+            # 1. Domain rules (Fixed regex)
+            grep -E '^  - DOMAIN(-SUFFIX|-KEYWORD)?,' "output/${safe_name}.yaml" > "output/${safe_name}-domain-temp.yaml" 2>/dev/null || true
             if [ -s "output/${safe_name}-domain-temp.yaml" ]; then
               echo "payload:" > "output/${safe_name}-domain.yaml"
               cat "output/${safe_name}-domain-temp.yaml" >> "output/${safe_name}-domain.yaml"
               
-              if mihomo convert-ruleset domain yaml "output/${safe_name}-domain.yaml" "output/${safe_name}.mrs" >/dev/null 2>&1; then
+              if mihomo convert-ruleset domain yaml "output/${safe_name}-domain.yaml" "output/${safe_name}.mrs" >mihomo.log 2>&1; then
                 echo "  ✅ Created ${safe_name}.mrs (domain)"
                 mrs_size=$(numfmt --to=iec-i --suffix=B --format="%.1f" $(stat -c%s "output/${safe_name}.mrs") 2>/dev/null || echo "?")
                 file_list+="- ${safe_name}.mrs ($mrs_size)\n"
               else
-                echo "  ⚠️ Failed to create ${safe_name}.mrs (domain)"
+                echo "  ⚠️ Failed to create ${safe_name}.mrs (domain): $(cat mihomo.log)"
               fi
-              rm -f "output/${safe_name}-domain.yaml" "output/${safe_name}-domain-temp.yaml"
+              rm -f "output/${safe_name}-domain.yaml" "output/${safe_name}-domain-temp.yaml" mihomo.log
             fi
 
-            # Extract IP rules and validate with Python
+            # 2. IP rules (Python forces IP-CIDR for mihomo compatibility)
             grep -E '^  - IP-CIDR6?,' "output/${safe_name}.yaml" | python3 validate_ip.py > "output/${safe_name}-ipcidr-temp.yaml" 2>/dev/null || true
             if [ -s "output/${safe_name}-ipcidr-temp.yaml" ]; then
               echo "payload:" > "output/${safe_name}-ipcidr.yaml"
               cat "output/${safe_name}-ipcidr-temp.yaml" >> "output/${safe_name}-ipcidr.yaml"
               
-              if mihomo convert-ruleset ipcidr yaml "output/${safe_name}-ipcidr.yaml" "output/${safe_name}-ipcidr.mrs" >/dev/null 2>&1; then
+              if mihomo convert-ruleset ipcidr yaml "output/${safe_name}-ipcidr.yaml" "output/${safe_name}-ipcidr.mrs" >mihomo.log 2>&1; then
                 echo "  ✅ Created ${safe_name}-ipcidr.mrs"
                 mrs_size=$(numfmt --to=iec-i --suffix=B --format="%.1f" $(stat -c%s "output/${safe_name}-ipcidr.mrs") 2>/dev/null || echo "?")
                 file_list+="- ${safe_name}-ipcidr.mrs ($mrs_size)\n"
               else
-                echo "  ⚠️ Failed to create ${safe_name}-ipcidr.mrs"
+                echo "  ⚠️ Failed to create ${safe_name}-ipcidr.mrs: $(cat mihomo.log)"
               fi
-              rm -f "output/${safe_name}-ipcidr.yaml" "output/${safe_name}-ipcidr-temp.yaml"
+              rm -f "output/${safe_name}-ipcidr.yaml" "output/${safe_name}-ipcidr-temp.yaml" mihomo.log
             fi
           done
           
