@@ -70,6 +70,7 @@ jobs:
             ["unicom"]="6802 9800 10099"
             ["telegram"]="44907 59930 62014"
             ["intel"]="99 1760 4983"
+            ["bkvg"]="29141"
           )
 
           mkdir -p AS_IP-CIDR
