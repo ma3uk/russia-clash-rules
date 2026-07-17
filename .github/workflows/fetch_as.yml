@@ -98,7 +98,7 @@ jobs:
               url="https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS${asn}"
 
               # Делаем один надежный GET запрос с таймаутом
-              json=$(curl -s --max-time 15 "$url")
+              json=$(curl -s --max-time 15 "$url") || true
 
               # Проверяем структуру JSON на валидность встроенным jq методом
               if [[ -z "$json" ]] || ! echo "$json" | jq -e '.data.prefixes' >/dev/null 2>&1; then
