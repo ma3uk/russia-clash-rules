@@ -118,7 +118,7 @@ jobs:
             ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/AS_IP-CIDR/oracle_all.txt"]="oracle"
             ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/AS_IP-CIDR/cdn77_all.txt"]="cdn77"
             ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/AS_IP-CIDR/keycdn_all.txt"]="keycdn"
-            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/AS_IP-CIDR/keycdn_all.txt"]="flyio"
+            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/AS_IP-CIDR/flyio_all.txt"]="flyio"
             ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/AS_IP-CIDR/ddos_guard_all.txt"]="ddos_guard"
             ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/AS_IP-CIDR/hll_llc_all.txt"]="hll_llc"
             ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/AS_IP-CIDR/ovh_all.txt"]="ovh"
