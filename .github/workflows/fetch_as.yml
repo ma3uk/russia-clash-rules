@@ -1,0 +1,156 @@
+name: Fetch AS Prefixes
+on:
+  schedule:
+    - cron: "0 */12 * * *"   # Every 12 hours
+  workflow_dispatch:         # Manual trigger
+
+jobs:
+  fetch-prefixes:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Fetch prefixes for AS list
+        run: |
+          declare -A AS_GROUPS=(
+            ["cloudflare"]="13335 14789 132892 209242 400095 395747 394536 203898 202623 139242 133877"
+            ["akamai"]="18717 17334 133103 17204 21399 21357 21342 200005 213120 22207 20189 12222 16702 16625 20940 23454 23455 30675 33905 32787 35993 36029 393234 393560 63949 6183 24319 35994 18680 55770 55409 49846 49249 48163 43639 39836 36183 35204 34850 34164 33047 31984 31377 31110 31109 31108 31107 26008 23903 22452"
+            ["fastly"]="895 54113 394192 149097"
+            ["azure"]="8069 8075 12076 14271 18753 23536 65515 397096 398575 53587 24221 134235 22552 328646 15248"
+            ["imperva"]="19551 62571 44932"
+            ["stackpath"]="33438 54104"
+            ["oracle"]="3457 33517 31925 34135 29976 22435 20054 13832 20037 138207 1218 1219 11625 10884 11506 11479 11049 1217 11887 1216 1215 136025 1630 15519 14506 14544 14919 15179 15135 18837 18916 24185 203267 200705 200981 206209 23885 90 792 793 794 31898 7160 64102 63295 6142 60285 57748 54253 52019 46558 46403 43898 43894 4192 4191 4184 40921 36282 38538 401341 399966 393218 395738 393676 393314 39467 393773 395010"
+            ["cdn77"]="266444"
+            ["keycdn"]="44239"
+            ["arvancloud"]="202468 205585 208006 210296 57568"
+            ["flyio"]="40509"
+            ["ddos_guard"]="57724 44556"
+            ["hll_llc"]="51115 197068"
+            ["ovh"]="16276 35540 17890 36906"
+            ["hetzner"]="24940 212317 213230 215859"
+            ["namecheap"]="22612 1239 286 3257 6939 6453 19437 20454"
+            ["ionos"]="8560 15418 51862 54548 8881 8638 20718"
+            ["godaddy"]="15891 16892 20773 133882 21499 26496 30148 398790 397520 397518 397515 397514 397513 397516 31815 397517 397519 397521 398785 398103 398102 398104 398105 398106 398789 398107 398108 398109 398110 398786 398788 398791 30605 398793 398787 398792 397522 398101 400749 400754 400755 400753 400752 400751 400750 400748 400747 400746 398794"
+            ["amazon_cloudfront"]="16509 8987 14618 394089"
+            ["google_cloud"]="214611 214609 209539 209519 209504 15169 396982"
+            ["aws"]="699 16509 14618 19047 9059 8987 133161 55038 24080 58588 7224 10124 17943 64512 214731 16238 329126"
+            ["scaleway"]="12876 29447 54265 1299 3356 5511 6939 205537 202023 12322"
+            ["melbicom"]="8849 56630"
+            ["cogent"]="174 7346 8110 8109 8108 8107 8106 7982 7458 7421 7061 6496 6494 6299 6277 6276 6275 6274 6273 6272 6271 6270 6259 6177 6176 6175 6174 5084 4999 4994 4993 4992 4991 4550 4388 4200 4132 4064 4006 4005 4004 4003 4002 4001 4000 3830 3652 3651 3650 3649 3648 3647 3646 3645 3644 3643 3483 2649 2557 2556 2555 22099 2149 2014 19164 1808 1807 1806 1805 1804 1803 1802 1801 1800 1799 1795 1794 1793 1792 1791 1790 1789 174 16631 140664 1284 1283 1282 1281 1240 1239 12207 11526 11220 11024 10768"
+            ["datacamp"]="60068 50446 215929 212238 211612 3356 1299 2914 3257"
+            ["digitalocean"]="14061 62567 133165 202018 201229 393406 31898 1299 3356 174 2914 6453"
+            ["contabo"]="51167 40021 154135"
+            ["vultr"]="20473 208914 205008 210083 216107 46407 133795"
+            ["buyvm"]="53667 204211 211575"
+            ["retn"]="9002 51327 28886 25462 214845 214455 210203 209447 134518"
+            ["quadranet"]="8100 62639 62878 7185 64270 22298"
+            ["carpathia"]="58797 20141"
+            ["egihosting"]="54500 18779 64445 50304 25893"
+            ["enzu"]="18978 33223"
+            ["bunnyway"]="200325"
+            ["g-core"]="59245 210559 202422 199524"
+            ["zenlayer"]="21859"
+            ["F5"]="35280 22317 843"
+            ["cloudru"]="208677"
+            ["facebook"]="32934 54115 63293 34825 149642"
+            ["nforce"]="43350 64437 200415"
+            ["blizzard"]="57976 32163 55497"
+            ["m247"]="9009 16247 25799"
+            ["dreamhost"]="26347"
+            ["a2hosting"]="55293"
+            ["linode"]="48337"
+            ["ibm"]="163 763 1747"
+            ["unicom"]="6802 9800 10099"
+            ["telegram"]="44907 59930 62014"
+            ["intel"]="99 1760 4983"
+          )
+
+          mkdir -p AS_IP-CIDR
+
+          # Глобальные файлы
+          all_global="AS_IP-CIDR/all_provider.txt"
+          all_global_v4="AS_IP-CIDR/all_provider_v4.txt"
+          all_global_v6="AS_IP-CIDR/all_provider_v6.txt"
+
+          : > "$all_global"
+          : > "$all_global_v4"
+          : > "$all_global_v6"
+
+          for group in "${!AS_GROUPS[@]}"; do
+            echo "Processing group: $group"
+
+            combined="AS_IP-CIDR/${group}_all.txt"
+            combined_v4="AS_IP-CIDR/${group}_all_v4.txt"
+            combined_v6="AS_IP-CIDR/${group}_all_v6.txt"
+
+            : > "$combined"
+            : > "$combined_v4"
+            : > "$combined_v6"
+
+            for asn in ${AS_GROUPS[$group]}; do
+              echo "  Fetching AS$asn..."
+
+              url="https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS${asn}"
+
+              # Делаем один надежный GET запрос с таймаутом
+              json=$(curl -s --max-time 15 "$url")
+
+              # Проверяем структуру JSON на валидность встроенным jq методом
+              if [[ -z "$json" ]] || ! echo "$json" | jq -e '.data.prefixes' >/dev/null 2>&1; then
+                echo "  ERROR: AS$asn skipped (invalid response, API error or rate limit)"
+                sleep 1
+                continue
+              fi
+
+              as_file="AS_IP-CIDR/${group}_${asn}.txt"
+              as_file_v4="AS_IP-CIDR/${group}_${asn}_v4.txt"
+              as_file_v6="AS_IP-CIDR/${group}_${asn}_v6.txt"
+
+              echo "$json" | jq -r '.data.prefixes[].prefix' | sort -u > "$as_file"
+              grep -E '^[0-9]+\.' "$as_file" | sort -u > "$as_file_v4" || true
+              grep -E '^[0-9a-fA-F:]+:' "$as_file" | sort -u > "$as_file_v6" || true
+
+              cat "$as_file" >> "$combined"
+              cat "$as_file_v4" >> "$combined_v4"
+              cat "$as_file_v6" >> "$combined_v6"
+
+              # blocked_asn НЕ добавляется в глобальные списки
+              if [[ "$group" != "blocked_asn" ]]; then
+                cat "$as_file" >> "$all_global"
+                cat "$as_file_v4" >> "$all_global_v4"
+                cat "$as_file_v6" >> "$all_global_v6"
+              fi
+
+              # Небольшая пауза, чтобы RIPE не блокировал по лимиту запросов
+              sleep 0.1
+            done
+
+            sort -u "$combined" -o "$combined"
+            sort -u "$combined_v4" -o "$combined_v4"
+            sort -u "$combined_v6" -o "$combined_v6"
+
+            echo "  Group files saved: $group"
+          done
+
+          # Итоговая сортировка глобальных списков
+          sort -u "$all_global" -o "$all_global"
+          sort -u "$all_global_v4" -o "$all_global_v4"
+          sort -u "$all_global_v6" -o "$all_global_v6"
+
+          echo "Global provider files successfully generated."
+
+      - name: Commit results
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add AS_IP-CIDR || true
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "Update AS prefix lists"
+          git push
