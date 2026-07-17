@@ -36,7 +36,7 @@ jobs:
             ["x5"]="44704 198027 215810 201706 215013"
             ["er-telecom"]="9049 12768"
             ["trc_fiord"]="51369"
-            ["rostelecom"]="12389 25510 48044"
+            ["rostelecom"]="12389 25510 48044 196747"
             ["edgecenter"]="210756"
             ["hll_llc"]="51115 197068"
             ["ddos_guard"]="57724 44556"
@@ -48,6 +48,9 @@ jobs:
             ["megafon"]="31133 12714"
             ["ivi"]="57629"
             ["2gis"]="197482"
+            ["atomdata"]="199860"
+            ["ruform"]="207353"
+            ["setevye_tekhnologii"]="34879"
           )
 
           mkdir -p AS_IP-CIDR
