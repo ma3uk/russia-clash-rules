@@ -1,13 +1,12 @@
 name: Fetch AS Prefixes
 on:
   schedule:
-    - cron: "0 */12 * * *"   # Every 12 hours
-  workflow_dispatch:         # Manual trigger
+    - cron: "0 */12 * * *"   # Каждые 12 часов
+  workflow_dispatch:         # Ручной запуск
 
 jobs:
   fetch-prefixes:
     runs-on: ubuntu-latest
-    # Явно разрешаем запись в репозиторий для GitHub Actions токена
     permissions:
       contents: write
 
@@ -20,9 +19,6 @@ jobs:
 
       - name: Fetch prefixes for AS list
         run: |
-          # Включаем режим мониторинга задач для корректной работы 'jobs' в CI
-          set -m
-
           declare -A AS_GROUPS=(
             ["cloudflare"]="13335 14789 132892 209242 400095 395747 394536 203898 202623 139242 133877"
             ["akamai"]="18717 17334 133103 17204 21399 21357 21342 200005 213120 22207 20189 12222 16702 16625 20940 23454 23455 30675 33905 32787 35993 36029 393234 393560 63949 6183 24319 35994 18680 55770 55409 49846 49249 48163 43639 39836 36183 35204 34850 34164 33047 31984 31377 31110 31109 31108 31107 26008 23903 22452"
@@ -86,7 +82,8 @@ jobs:
           : > "$all_global_v4"
           : > "$all_global_v6"
 
-          MAX_JOBS=10
+          MAX_JOBS=5   # Оптимальный лимит для обхода банов RIPE API
+          pids=()
 
           echo "=== ФАЗА 1: Параллельное скачивание данных ==="
           
@@ -98,7 +95,7 @@ jobs:
                 json=$(curl -s --max-time 15 --retry 3 --retry-delay 2 "$url")
 
                 if [[ -z "$json" ]] || ! echo "$json" | jq -e '.data.prefixes' >/dev/null 2>&1; then
-                  echo "  [ОШИБКА] AS$asn ($group) пропущен — пустой ответ или лимит запросов."
+                  echo "  [ПРОПУСК] AS$asn ($group) — пустой ответ или лимит запросов."
                   exit 0
                 fi
 
@@ -113,9 +110,21 @@ jobs:
                 echo "  [ОК] Скачан AS$asn для группы $group"
               ) &
 
-              # Благодаря set -m этот цикл теперь корректно удерживает пул из 5 потоков
-              while [[ $(jobs -r -p | wc -l) -ge $MAX_JOBS ]]; do
-                sleep 0.2
+              pids+=($!)
+
+              # Надежный CI-менеджер потоков через PID-массив
+              while [[ ${#pids[@]} -ge $MAX_JOBS ]]; do
+                still_running=()
+                for pid in "${pids[@]}"; do
+                  if kill -0 "$pid" 2>/dev/null; then
+                    still_running+=("$pid")
+                  fi
+                done
+                pids=("${still_running[@]}")
+                
+                if [[ ${#pids[@]} -ge $MAX_JOBS ]]; then
+                  sleep 0.2
+                fi
               done
 
             done
@@ -165,6 +174,10 @@ jobs:
           sort -u "$all_global_v4" -o "$all_global_v4"
           sort -u "$all_global_v6" -o "$all_global_v6"
 
+          echo "=== ФАЗА 3: Очистка единичных файлов ==="
+          # Удаляет промежуточные файлы AS, оставляя только чистые итоговые отчеты
+          find AS_IP-CIDR/ -type f ! -name "*_all*" ! -name "all_providers*" -delete
+
           echo "Все глобальные файлы успешно сгенерированы."
 
       - name: Commit results
@@ -175,11 +188,11 @@ jobs:
           git config user.email "github-actions@github.com"
           git add AS_IP-CIDR || true
           
-          # Безопасная проверка изменений, обходящая ловушку set -e
           if git diff --cached --quiet; then
             echo "Изменений не обнаружено. Пропускаем коммит."
             exit 0
           fi
           
-          git commit -m "Update AS prefix lists (multi-threaded)"
-          git push
+          git commit -m "Update AS prefix lists (multi-threaded, PID-managed)"
+          # Безопасный пуш с явным указанием активной ветки воркфлоу
+          git push origin HEAD:${{ github.ref_name }}
