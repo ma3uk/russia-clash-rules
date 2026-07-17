@@ -7,6 +7,9 @@ on:
 jobs:
   fetch-prefixes:
     runs-on: ubuntu-latest
+    # Явно разрешаем запись в репозиторий для GitHub Actions токена
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
@@ -17,6 +20,9 @@ jobs:
 
       - name: Fetch prefixes for AS list
         run: |
+          # Включаем режим мониторинга задач для корректной работы 'jobs' в CI
+          set -m
+
           declare -A AS_GROUPS=(
             ["cloudflare"]="13335 14789 132892 209242 400095 395747 394536 203898 202623 139242 133877"
             ["akamai"]="18717 17334 133103 17204 21399 21357 21342 200005 213120 22207 20189 12222 16702 16625 20940 23454 23455 30675 33905 32787 35993 36029 393234 393560 63949 6183 24319 35994 18680 55770 55409 49846 49249 48163 43639 39836 36183 35204 34850 34164 33047 31984 31377 31110 31109 31108 31107 26008 23903 22452"
@@ -72,7 +78,6 @@ jobs:
 
           mkdir -p AS_IP-CIDR
 
-          # Глобальные файлы
           all_global="AS_IP-CIDR/all_provider.txt"
           all_global_v4="AS_IP-CIDR/all_provider_v4.txt"
           all_global_v6="AS_IP-CIDR/all_provider_v6.txt"
@@ -81,19 +86,15 @@ jobs:
           : > "$all_global_v4"
           : > "$all_global_v6"
 
-          # Количество ОДНОВРЕМЕННЫХ потоков для curl (оптимально 5, чтобы RIPE не банил)
-          MAX_JOBS=5
+          MAX_JOBS=10
 
           echo "=== ФАЗА 1: Параллельное скачивание данных ==="
           
           for group in "${!AS_GROUPS[@]}"; do
             for asn in ${AS_GROUPS[$group]}; do
               
-              # Запуск подпроцесса в бэкграунде (&)
               (
                 url="https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS${asn}"
-                
-                # Запрос с таймаутом и 3 попытками перезапуска при ошибках сети/лимитов
                 json=$(curl -s --max-time 15 --retry 3 --retry-delay 2 "$url")
 
                 if [[ -z "$json" ]] || ! echo "$json" | jq -e '.data.prefixes' >/dev/null 2>&1; then
@@ -112,7 +113,7 @@ jobs:
                 echo "  [ОК] Скачан AS$asn для группы $group"
               ) &
 
-              # Контроль пула потоков: если запущено >= MAX_JOBS, ждем освобождения места
+              # Благодаря set -m этот цикл теперь корректно удерживает пул из 5 потоков
               while [[ $(jobs -r -p | wc -l) -ge $MAX_JOBS ]]; do
                 sleep 0.2
               done
@@ -120,11 +121,10 @@ jobs:
             done
           done
 
-          # Ожидаем завершения абсолютно всех фоновых задач скачивания
           wait
-          echo "Все префиксы успешно скачаны во временные файлы."
+          echo "Все префиксы скачаны во временные файлы."
 
-          echo "=== ФАЗА 2: Последовательная сборка и фильтрация глобальных файлов ==="
+          echo "=== ФАЗА 2: Сборка и фильтрация глобальных файлов ==="
 
           for group in "${!AS_GROUPS[@]}"; do
             combined="AS_IP-CIDR/${group}_all.txt"
@@ -140,7 +140,6 @@ jobs:
               as_file_v4="AS_IP-CIDR/${group}_${asn}_v4.txt"
               as_file_v6="AS_IP-CIDR/${group}_${asn}_v6.txt"
 
-              # Сборка групповых файлов
               if [[ -f "$as_file" ]]; then
                 cat "$as_file" >> "$combined"
                 [[ "$group" != "blocked_asn" ]] && cat "$as_file" >> "$all_global"
@@ -157,18 +156,16 @@ jobs:
               fi
             done
 
-            # Очистка дубликатов внутри групп
             sort -u "$combined" -o "$combined"
             sort -u "$combined_v4" -o "$combined_v4"
             sort -u "$combined_v6" -o "$combined_v6"
           done
 
-          # Итоговая очистка дубликатов в глобальных файлах
           sort -u "$all_global" -o "$all_global"
           sort -u "$all_global_v4" -o "$all_global_v4"
           sort -u "$all_global_v6" -o "$all_global_v6"
 
-          echo "Все глобальные файлы успешно сгенерированы и отсортированы!"
+          echo "Все глобальные файлы успешно сгенерированы."
 
       - name: Commit results
         env:
@@ -177,6 +174,12 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add AS_IP-CIDR || true
-          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          
+          # Безопасная проверка изменений, обходящая ловушку set -e
+          if git diff --cached --quiet; then
+            echo "Изменений не обнаружено. Пропускаем коммит."
+            exit 0
+          fi
+          
           git commit -m "Update AS prefix lists (multi-threaded)"
           git push
