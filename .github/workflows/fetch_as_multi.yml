@@ -78,9 +78,9 @@ jobs:
 
           mkdir -p AS_IP-CIDR
 
-          all_global="AS_IP-CIDR/all_provider.txt"
-          all_global_v4="AS_IP-CIDR/all_provider_v4.txt"
-          all_global_v6="AS_IP-CIDR/all_provider_v6.txt"
+          all_global="AS_IP-CIDR/all_providers.txt"
+          all_global_v4="AS_IP-CIDR/all_providers_v4.txt"
+          all_global_v6="AS_IP-CIDR/all_providers_v6.txt"
 
           : > "$all_global"
           : > "$all_global_v4"
