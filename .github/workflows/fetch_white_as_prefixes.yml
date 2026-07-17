@@ -1,0 +1,111 @@
+name: Fetch white AS Prefixes
+on:
+  schedule:
+    - cron: "0 */12 * * *"   # Every 12 hours
+  workflow_dispatch:         # Manual trigger
+
+
+jobs:
+  fetch-prefixes:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Fetch prefixes for AS list
+        run: |
+          declare -A AS_GROUPS=(
+            ["riot_games"]="6507 38118 62830"
+            ["intel"]="99 1760 4983"
+            ["yandex"]="13238 44534 200350"
+            ["vk"]="28709 47541 47542 207970 211963 213235"
+            ["sber"]="33844 35237 47457"
+            ["avito"]="201012"
+            ["ozon"]="44386 138254 207986"
+            ["wildberries"]="57073"
+          )
+
+          mkdir -p AS_IP-CIDR
+
+          # Глобальные файлы (без blocked_asn)
+          all_global="AS_IP-CIDR/all_providers.txt"
+          all_global_v4="AS_IP-CIDR/all_providers_v4.txt"
+          all_global_v6="AS_IP-CIDR/all_providers_v6.txt"
+
+          : > "$all_global"
+          : > "$all_global_v4"
+          : > "$all_global_v6"
+
+          for group in "${!AS_GROUPS[@]}"; do
+            echo "Processing group: $group"
+
+            combined="AS_IP-CIDR/${group}_all.txt"
+            combined_v4="AS_IP-CIDR/${group}_all_v4.txt"
+            combined_v6="AS_IP-CIDR/${group}_all_v6.txt"
+
+            : > "$combined"
+            : > "$combined_v4"
+            : > "$combined_v6"
+
+            for asn in ${AS_GROUPS[$group]}; do
+              echo "  Checking AS$asn availability..."
+
+              url="https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS${asn}"
+
+              status=$(curl -Is --max-redirs 0 "$url" | head -n 1 | awk '{print $2}')
+
+              if [[ "$status" != "200" ]]; then
+                echo "  ERROR: HTTP $status for AS$asn — skipping"
+                continue
+              fi
+
+              json=$(curl -s "$url")
+
+              as_file="AS_IP-CIDR/${group}_${asn}.txt"
+              as_file_v4="AS_IP-CIDR/${group}_${asn}_v4.txt"
+              as_file_v6="AS_IP-CIDR/${group}_${asn}_v6.txt"
+
+              echo "$json" | jq -r '.data.prefixes[].prefix' | sort -u > "$as_file"
+              grep -E '^[0-9]+\.' "$as_file" | sort -u > "$as_file_v4" || true
+              grep -E '^[0-9a-fA-F:]+:' "$as_file" | sort -u > "$as_file_v6" || true
+
+              cat "$as_file" >> "$combined"
+              cat "$as_file_v4" >> "$combined_v4"
+              cat "$as_file_v6" >> "$combined_v6"
+
+              # blocked_asn НЕ добавляется в глобальные списки
+              if [[ "$group" != "blocked_asn" ]]; then
+                cat "$as_file" >> "$all_global"
+                cat "$as_file_v4" >> "$all_global_v4"
+                cat "$as_file_v6" >> "$all_global_v6"
+              fi
+            done
+
+            sort -u "$combined" -o "$combined"
+            sort -u "$combined_v4" -o "$combined_v4"
+            sort -u "$combined_v6" -o "$combined_v6"
+
+            echo "  Group files saved: $group"
+          done
+
+          # Глобальные списки (без blocked_asn)
+          sort -u "$all_global" -o "$all_global"
+          sort -u "$all_global_v4" -o "$all_global_v4"
+          sort -u "$all_global_v6" -o "$all_global_v6"
+
+          echo "Global provider files generated."
+
+      - name: Commit results
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add AS_IP-CIDR || true
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "Update AS prefix lists"
+          git push
