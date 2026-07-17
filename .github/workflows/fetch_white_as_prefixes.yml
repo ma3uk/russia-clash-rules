@@ -44,7 +44,8 @@ jobs:
           : > "$all_global_v4"
           : > "$all_global_v6"
 
-          MAX_JOBS=10
+          MAX_JOBS=5   # Оптимальный лимит для обхода банов RIPE API
+          pids=()
 
           echo "=== ФАЗА 1: Параллельное скачивание данных ==="
           
@@ -56,7 +57,7 @@ jobs:
                 json=$(curl -s --max-time 15 --retry 3 --retry-delay 2 "$url")
 
                 if [[ -z "$json" ]] || ! echo "$json" | jq -e '.data.prefixes' >/dev/null 2>&1; then
-                  echo "  [ОШИБКА] AS$asn ($group) пропущен — пустой ответ или лимит запросов."
+                  echo "  [ПРОПУСК] AS$asn ($group) — пустой ответ или лимит запросов."
                   exit 0
                 fi
 
@@ -71,9 +72,21 @@ jobs:
                 echo "  [ОК] Скачан AS$asn для группы $group"
               ) &
 
-              # Благодаря set -m этот цикл теперь корректно удерживает пул из 5 потоков
-              while [[ $(jobs -r -p | wc -l) -ge $MAX_JOBS ]]; do
-                sleep 0.2
+              pids+=($!)
+
+              # Надежный CI-менеджер потоков через PID-массив
+              while [[ ${#pids[@]} -ge $MAX_JOBS ]]; do
+                still_running=()
+                for pid in "${pids[@]}"; do
+                  if kill -0 "$pid" 2>/dev/null; then
+                    still_running+=("$pid")
+                  fi
+                done
+                pids=("${still_running[@]}")
+                
+                if [[ ${#pids[@]} -ge $MAX_JOBS ]]; then
+                  sleep 0.2
+                fi
               done
 
             done
@@ -123,6 +136,10 @@ jobs:
           sort -u "$all_global_v4" -o "$all_global_v4"
           sort -u "$all_global_v6" -o "$all_global_v6"
 
+          echo "=== ФАЗА 3: Очистка единичных файлов ==="
+          # Удаляет промежуточные файлы AS, оставляя только чистые итоговые отчеты
+          find AS_IP-CIDR/ -type f ! -name "*_all*" ! -name "all_providers*" -delete
+
           echo "Все глобальные файлы успешно сгенерированы."
 
       - name: Commit results
@@ -133,11 +150,11 @@ jobs:
           git config user.email "github-actions@github.com"
           git add AS_IP-CIDR || true
           
-          # Безопасная проверка изменений, обходящая ловушку set -e
           if git diff --cached --quiet; then
             echo "Изменений не обнаружено. Пропускаем коммит."
             exit 0
           fi
           
-          git commit -m "Update AS prefix lists (multi-threaded)"
-          git push
+          git commit -m "Update AS prefix lists (multi-threaded, PID-managed)"
+          # Безопасный пуш с явным указанием активной ветки воркфлоу
+          git push origin HEAD:${{ github.ref_name }}
