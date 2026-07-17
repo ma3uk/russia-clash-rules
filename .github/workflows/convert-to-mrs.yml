@@ -108,7 +108,7 @@ jobs:
             ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/AS_IP-CIDR/amazon_cloudfront_all.txt"]="cloudfront"
             ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/custom_lists/autodesk.txt"]="autodesk"
             ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/AS_IP-CIDR/arvancloud_all.txt"]="arvancloud"
-            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/AS_IP-CIDR/aws.txt"]="aws"
+            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/AS_IP-CIDR/aws_all.txt"]="aws"
             ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/AS_IP-CIDR/azure_all.txt"]="azure"
             ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/AS_IP-CIDR/blizzard_all.txt"]="blizzard"
             ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/AS_IP-CIDR/cloudflare_all.txt"]="cloudflare"
@@ -171,7 +171,7 @@ jobs:
             ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/AS_IP-CIDR/ozon_all.txt"]="ozon"
             ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/AS_IP-CIDR/wildberries_all.txt"]="wildberries"
             ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/AS_IP-CIDR/avito_all.txt"]="avito"
-            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/AS_IP-CIDR/x5.txt"]="x5"
+            ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/AS_IP-CIDR/x5_all.txt"]="x5"
           )
           
           file_list=""
