@@ -1,13 +1,15 @@
-name: Fetch white AS Prefixes
+name: Fetch White AS Prefixes
 on:
   schedule:
     - cron: "0 */12 * * *"   # Every 12 hours
   workflow_dispatch:         # Manual trigger
 
-
 jobs:
   fetch-prefixes:
     runs-on: ubuntu-latest
+    # Явно разрешаем запись в репозиторий для GitHub Actions токена
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
@@ -16,8 +18,11 @@ jobs:
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Fetch prefixes for AS list
+      - name: Fetch white prefixes for AS list
         run: |
+          # Включаем режим мониторинга задач для корректной работы 'jobs' в CI
+          set -m
+
           declare -A AS_GROUPS=(
             ["riot_games"]="6507 38118 62830"
             ["yandex"]="13238 44534 200350"
@@ -31,18 +36,55 @@ jobs:
 
           mkdir -p AS_IP-CIDR
 
-          # Глобальные файлы (без blocked_asn)
-          all_global="AS_IP-CIDR/all_providers.txt"
-          all_global_v4="AS_IP-CIDR/all_providers_v4.txt"
-          all_global_v6="AS_IP-CIDR/all_providers_v6.txt"
+          all_global="AS_IP-CIDR/all_white_providers.txt"
+          all_global_v4="AS_IP-CIDR/all_white_providers_v4.txt"
+          all_global_v6="AS_IP-CIDR/all_white_providers_v6.txt"
 
           : > "$all_global"
           : > "$all_global_v4"
           : > "$all_global_v6"
 
-          for group in "${!AS_GROUPS[@]}"; do
-            echo "Processing group: $group"
+          MAX_JOBS=10
 
+          echo "=== ФАЗА 1: Параллельное скачивание данных ==="
+          
+          for group in "${!AS_GROUPS[@]}"; do
+            for asn in ${AS_GROUPS[$group]}; do
+              
+              (
+                url="https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS${asn}"
+                json=$(curl -s --max-time 15 --retry 3 --retry-delay 2 "$url")
+
+                if [[ -z "$json" ]] || ! echo "$json" | jq -e '.data.prefixes' >/dev/null 2>&1; then
+                  echo "  [ОШИБКА] AS$asn ($group) пропущен — пустой ответ или лимит запросов."
+                  exit 0
+                fi
+
+                as_file="AS_IP-CIDR/${group}_${asn}.txt"
+                as_file_v4="AS_IP-CIDR/${group}_${asn}_v4.txt"
+                as_file_v6="AS_IP-CIDR/${group}_${asn}_v6.txt"
+
+                echo "$json" | jq -r '.data.prefixes[].prefix' | sort -u > "$as_file"
+                grep -E '^[0-9]+\.' "$as_file" | sort -u > "$as_file_v4" || true
+                grep -E '^[0-9a-fA-F:]+:' "$as_file" | sort -u > "$as_file_v6" || true
+                
+                echo "  [ОК] Скачан AS$asn для группы $group"
+              ) &
+
+              # Благодаря set -m этот цикл теперь корректно удерживает пул из 5 потоков
+              while [[ $(jobs -r -p | wc -l) -ge $MAX_JOBS ]]; do
+                sleep 0.2
+              done
+
+            done
+          done
+
+          wait
+          echo "Все префиксы скачаны во временные файлы."
+
+          echo "=== ФАЗА 2: Сборка и фильтрация глобальных файлов ==="
+
+          for group in "${!AS_GROUPS[@]}"; do
             combined="AS_IP-CIDR/${group}_all.txt"
             combined_v4="AS_IP-CIDR/${group}_all_v4.txt"
             combined_v6="AS_IP-CIDR/${group}_all_v6.txt"
@@ -52,52 +94,36 @@ jobs:
             : > "$combined_v6"
 
             for asn in ${AS_GROUPS[$group]}; do
-              echo "  Checking AS$asn availability..."
-
-              url="https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS${asn}"
-
-              status=$(curl -Is --max-redirs 0 "$url" | head -n 1 | awk '{print $2}')
-
-              if [[ "$status" != "200" ]]; then
-                echo "  ERROR: HTTP $status for AS$asn — skipping"
-                continue
-              fi
-
-              json=$(curl -s "$url")
-
               as_file="AS_IP-CIDR/${group}_${asn}.txt"
               as_file_v4="AS_IP-CIDR/${group}_${asn}_v4.txt"
               as_file_v6="AS_IP-CIDR/${group}_${asn}_v6.txt"
 
-              echo "$json" | jq -r '.data.prefixes[].prefix' | sort -u > "$as_file"
-              grep -E '^[0-9]+\.' "$as_file" | sort -u > "$as_file_v4" || true
-              grep -E '^[0-9a-fA-F:]+:' "$as_file" | sort -u > "$as_file_v6" || true
+              if [[ -f "$as_file" ]]; then
+                cat "$as_file" >> "$combined"
+                [[ "$group" != "blocked_asn" ]] && cat "$as_file" >> "$all_global"
+              fi
 
-              cat "$as_file" >> "$combined"
-              cat "$as_file_v4" >> "$combined_v4"
-              cat "$as_file_v6" >> "$combined_v6"
+              if [[ -f "$as_file_v4" ]]; then
+                cat "$as_file_v4" >> "$combined_v4"
+                [[ "$group" != "blocked_asn" ]] && cat "$as_file_v4" >> "$all_global_v4"
+              fi
 
-              # blocked_asn НЕ добавляется в глобальные списки
-              if [[ "$group" != "blocked_asn" ]]; then
-                cat "$as_file" >> "$all_global"
-                cat "$as_file_v4" >> "$all_global_v4"
-                cat "$as_file_v6" >> "$all_global_v6"
+              if [[ -f "$as_file_v6" ]]; then
+                cat "$as_file_v6" >> "$combined_v6"
+                [[ "$group" != "blocked_asn" ]] && cat "$as_file_v6" >> "$all_global_v6"
               fi
             done
 
             sort -u "$combined" -o "$combined"
             sort -u "$combined_v4" -o "$combined_v4"
             sort -u "$combined_v6" -o "$combined_v6"
-
-            echo "  Group files saved: $group"
           done
 
-          # Глобальные списки (без blocked_asn)
           sort -u "$all_global" -o "$all_global"
           sort -u "$all_global_v4" -o "$all_global_v4"
           sort -u "$all_global_v6" -o "$all_global_v6"
 
-          echo "Global provider files generated."
+          echo "Все глобальные файлы успешно сгенерированы."
 
       - name: Commit results
         env:
@@ -106,6 +132,12 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add AS_IP-CIDR || true
-          git diff --cached --quiet && echo "No changes to commit" && exit 0
-          git commit -m "Update AS prefix lists"
+          
+          # Безопасная проверка изменений, обходящая ловушку set -e
+          if git diff --cached --quiet; then
+            echo "Изменений не обнаружено. Пропускаем коммит."
+            exit 0
+          fi
+          
+          git commit -m "Update AS prefix lists (multi-threaded)"
           git push
