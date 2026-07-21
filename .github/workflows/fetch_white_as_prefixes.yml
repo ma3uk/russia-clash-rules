@@ -51,6 +51,7 @@ jobs:
             ["atomdata"]="199860"
             ["ruform"]="207353"
             ["setevye_tekhnologii"]="34879"
+            ["retn"]="57304 29740 198947"
           )
 
           mkdir -p AS_IP-CIDR
