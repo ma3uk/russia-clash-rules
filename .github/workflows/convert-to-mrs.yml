@@ -177,6 +177,7 @@ jobs:
             ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/AS_IP-CIDR/wildberries_all.txt"]="wildberries"
             ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/AS_IP-CIDR/avito_all.txt"]="avito"
             ["https://raw.githubusercontent.com/ma3uk/russia-clash-rules/refs/heads/main/AS_IP-CIDR/x5_all.txt"]="x5"
+            ["https://raw.githubusercontent.com/dibdot/DoH-IP-blocklists/refs/heads/master/doh-domains.txt"]="doh-dns-domains"
           )
           
           file_list=""
